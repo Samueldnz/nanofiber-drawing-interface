@@ -174,7 +174,7 @@ class SyringeFrame(CTkFrame):
 
     def nextTab(self):
         # Get the parent of this frame, which should be the MyTabView instance
-        # Select the "Connection" tab
+        # Select the "Summary" tab
         self.master.master.set('Summary')
 
     def backTab(self):
