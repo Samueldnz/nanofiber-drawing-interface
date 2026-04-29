@@ -67,6 +67,7 @@ class AppState(QObject):
         super().__init__()
         self.params = Params()
 
+    # its called from UI when user changes some attr and it writes the value 
     def set_param(self, name: str, value: Any) -> None:
         if not hasattr(self.params, name):
             raise AttributeError(f"Unknown param: {name}")
@@ -133,6 +134,29 @@ class AppState(QObject):
 # ----------------------------- Drawing Worker -----------------------------
 
 class DrawingWorker(QObject):
+    """
+    Worker object responsible for executing the drawing process in a background thread.
+
+    This class uses Qt signals to communicate with other parts of the application
+    (e.g., the controller and UI) in a thread-safe manner.
+
+    Signals:
+        finished (Signal):
+            Emitted when the drawing process completes, regardless of success or failure.
+
+        error (Signal[str]):
+            Emitted when an exception occurs during execution.
+            Carries the error message as a string.
+
+        status (Signal[str]):
+            Emitted to provide real-time status updates during the drawing process.
+            Typically used for logging or UI feedback.
+
+    Args:
+        controller (MachineController):
+            Reference to the controller responsible for executing the drawing logic.
+    """
+
     finished = Signal()
     error = Signal(str)
     status = Signal(str)
@@ -141,8 +165,30 @@ class DrawingWorker(QObject):
         super().__init__()
         self.controller = controller
 
-    @Slot()
+    @Slot() # marks a funtion that can receive signals and hadle
     def run(self) -> None:
+        """
+        Entry point for the worker when executed in a QThread.
+
+        This method invokes the controller's drawing loop and forwards the
+        `status` signal so that progress updates can be emitted during execution.
+
+        Behavior:
+            - Calls the controller's internal drawing loop.
+            - Emits `status` messages during execution (via the controller).
+            - Emits `error` if an exception occurs.
+            - Always emits `finished` when execution ends.
+
+        Signal Emissions:
+            status (str):
+                Emitted indirectly during drawing to report progress/log messages.
+
+            error (str):
+                Emitted if an exception is raised during execution.
+
+            finished ():
+                Emitted after completion, regardless of success or failure.
+        """
         try:
             self.controller._run_drawing_loop(self.status)
         except Exception as e:
@@ -154,7 +200,7 @@ class DrawingWorker(QObject):
 # ----------------------------- Controller -----------------------------
 
 class MachineController(QObject):
-    connection_changed = Signal(bool)
+    connection_changed = Signal(bool)  # emit signal with a bool value inside
 
     drawing_running_changed = Signal(bool)
     drawing_paused_changed = Signal(bool)
@@ -214,22 +260,25 @@ class MachineController(QObject):
             "Syringe Droplet Units": f"{p.syringe_droplet_units}",
         }
 
-        c = canvas.Canvas(path)
-        c.setFont("Helvetica-Bold", 24)
-        c.drawString(40, 800, "Project Summary")
-        c.setFont("Helvetica", 14)
+        c = canvas.Canvas(path)  # create PDF file
 
-        y = 760
+        c.setFont("Helvetica-Bold", 24)  # set title font
+        c.drawString(40, 800, "Project Summary")  # draw title at top
+        c.setFont("Helvetica", 14)  # set font for content
+
+        y = 760  # starting vertical position (below title)
+
         for k, v in summary_dict.items():
-            c.drawString(40, y, f"{k}: {v}")
-            y -= 24
-            if y < 60:
-                c.showPage()
-                c.setFont("Helvetica", 14)
-                y = 800
+            c.drawString(40, y, f"{k}: {v}")  # write one line (key: value)
+            y -= 24  # move down for next line
 
-        c.save()
-        self.log("PDF saved")
+            if y < 60:  # if near bottom of page
+                c.showPage()  # create new page
+                c.setFont("Helvetica", 14)  # reset font after page break
+                y = 800  # reset position to top
+
+        c.save()  # finalize and save PDF file
+        self.log("PDF saved")  # log message
 
     # ---------- Serial ----------
     def _find_printer_port(self, baudrate: int = 115200) -> Optional[str]:
