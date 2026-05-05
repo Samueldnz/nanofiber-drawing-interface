@@ -282,17 +282,19 @@ class MachineController(QObject):
 
     # ---------- Serial ----------
     def _find_printer_port(self, baudrate: int = 115200) -> Optional[str]:
+        # checks if pyserial is installed
         if list_ports is None:
             return None
-        for port in list(list_ports.comports()):
-            dev = getattr(port, "device", None)
-            if not dev:
+        
+        for port in list(list_ports.comports()):  # get all avaible ports
+            dev = getattr(port, "device", None)  # gets ports device
+            if not dev:       # if its not valid, just skip
                 continue
-            try:
+            try:   
                 if serial is None:
                     return None
-                s = serial.Serial(dev, baudrate=baudrate, timeout=1)
-                s.close()
+                s = serial.Serial(dev, baudrate=baudrate, timeout=1) #try to open a port, if it work, return the port
+                s.close() # close, because its just a test
                 return dev
             except Exception:
                 continue
