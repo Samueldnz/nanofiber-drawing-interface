@@ -301,93 +301,127 @@ class MachineController(QObject):
         return None
 
     def connect(self, baudrate: int = 115200) -> bool:
+        # Ensure pyserial is available in the current environment
         if serial is None:
             self.log("pyserial not available (install pyserial).")
             return False
 
+        # Attempt to automatically detect an available serial port
         port = self._find_printer_port(baudrate=baudrate)
         if not port:
+            # No valid serial device detected (printer may be disconnected or driver missing)
             self.log("No serial port found.")
             return False
 
         try:
+            # Open serial connection to the detected port
             self.ser = serial.Serial(port, baudrate=baudrate, timeout=1)
 
-            # many printers reboot on serial-open
+            # Many 3D printers (e.g., Marlin-based) reset when a serial connection is opened.
+            # A short delay is required to allow the firmware to reboot and become responsive.
             time.sleep(2.0)
+
+            # Clear any residual data in buffers caused by the reset or previous communication
             try:
                 self.ser.reset_input_buffer()
                 self.ser.reset_output_buffer()
             except Exception:
+                # Buffer reset may fail on some drivers/OS combinations; safe to ignore
                 pass
 
-            # mark connected first (so UI updates), then auto-home
+            # Notify UI that connection is established BEFORE sending commands
+            # This ensures UI state is updated even if subsequent commands take time
             self.connection_changed.emit(True)
+
             self.log(f"Connected to the printer on {port}")
             self.log("Homing printer...")
 
-            # IMPORTANT: auto-home on every connect
+            # Perform mandatory homing (G28) after connection to ensure a known reference state
+            # This is critical for safe and repeatable motion operations
             self._send_and_wait_ok("G28", timeout_s=120.0)
 
             self.log("Homing done")
             return True
 
         except Exception as e:
+            # Handle any failure during connection or initialization
             self.log(f"Could not connect: {e}")
+
+            # Ensure serial resource is properly released on failure
             try:
                 if self.ser is not None:
                     self.ser.close()
             except Exception:
                 pass
+
+            # Reset internal state and notify UI of disconnection
             self.ser = None
             self.connection_changed.emit(False)
             return False
 
     def disconnect(self) -> bool:
         try:
+            # Ensure any ongoing drawing process is safely stopped before closing the connection
             self.stop_drawing()
+
+            # Close the serial connection if it is active
             if self.ser is not None:
                 self.ser.close()
-                self.ser = None
+                self.ser = None  # Reset reference to indicate no active connection
+
+            # Notify UI about the disconnection state
             self.connection_changed.emit(False)
+
+            # Log successful disconnection
             self.log("Disconnected from the printer")
             return True
+
         except Exception as e:
+            # Handle unexpected errors during disconnection
             self.log(f"Could not disconnect: {e}")
             return False
 
     def _send_and_wait_ok(self, command: str, timeout_s: float = 30.0) -> None:
         """
-        Send one command and wait firmware OK.
-        Accepts: 'ok' or 'ok ...'
+        Send a single G-code command and block until an 'ok' response is received.
         """
+        # Ensure an active serial connection exists
         if self.ser is None:
             raise RuntimeError("No connection to the printer")
 
+        # Send command with newline termination
         self.ser.write((command + "\n").encode("utf-8"))
 
+        # Set timeout deadline
         deadline = time.time() + timeout_s
-        last_nonempty = None
+        last_nonempty = None  # Keep last meaningful response for debugging
 
+        # Read responses until 'ok', error, or timeout
         while time.time() < deadline:
             raw = self.ser.readline()
             if not raw:
-                continue
+                continue  # Ignore empty reads
 
             line = raw.decode(errors="ignore").strip()
             if not line:
-                continue
+                continue  # Ignore blank lines
 
             last_nonempty = line
             low = line.lower()
 
+            # Success: command completed
             if low == "ok" or low.startswith("ok"):
                 return
+
+            # Printer still processing
             if "busy" in low:
                 continue
+
+            # Firmware reported error
             if "error" in low:
                 raise RuntimeError(f"Firmware error after '{command}': {line}")
 
+        # No response within timeout
         raise TimeoutError(
             f"Timeout waiting for ok after: {command}"
             + (f" (last: {last_nonempty})" if last_nonempty else "")

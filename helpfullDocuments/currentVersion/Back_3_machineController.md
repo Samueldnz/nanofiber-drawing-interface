@@ -34,5 +34,55 @@ while not self._pause_event.is_set():  # is_set() = true if set(), loop continue
 
 
 
+---
 
 
+# Serial Communication: _send_and_wait_ok
+
+```python
+def _send_and_wait_ok(self, command: str, timeout_s: float = 30.0) -> None:
+```
+
+## Purpose
+Ensures reliable communication with the 3D printer by sending a single G-code command and waiting for confirmation before proceeding.
+
+## Behavior
+The function:
+1. Sends a G-code command over serial.
+2. Continuously reads firmware responses.
+3. Blocks execution until one of the following occurs:
+   - "ok" → command completed successfully
+   - "error" → raises RuntimeError
+   - timeout → raises TimeoutError
+
+## Accepted Responses
+- "ok"
+- "ok <additional info>"
+- "busy: processing" → ignored (wait continues)
+
+## Error Handling
+- Raises RuntimeError if firmware reports an error
+- Raises TimeoutError if no valid response is received within the timeout
+
+## Why This Is Important
+3D printer firmware processes commands sequentially. Sending commands without waiting:
+- Overflows the buffer
+- Causes unpredictable motion
+- Breaks synchronization
+
+This function guarantees:
+- Command execution order
+- Safe communication
+- Deterministic behavior
+
+## Typical Usage
+
+```python
+_send_and_wait_ok("G28") # Home axes
+_send_and_wait_ok("G1 X10") # Move to position
+```
+
+## Notes
+- Assumes Marlin-like firmware behavior
+- Uses blocking I/O (intended for controlled command flow)
+- Should not be used for high-frequency streaming without modification
