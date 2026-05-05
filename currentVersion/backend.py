@@ -134,28 +134,6 @@ class AppState(QObject):
 # ----------------------------- Drawing Worker -----------------------------
 
 class DrawingWorker(QObject):
-    """
-    Worker object responsible for executing the drawing process in a background thread.
-
-    This class uses Qt signals to communicate with other parts of the application
-    (e.g., the controller and UI) in a thread-safe manner.
-
-    Signals:
-        finished (Signal):
-            Emitted when the drawing process completes, regardless of success or failure.
-
-        error (Signal[str]):
-            Emitted when an exception occurs during execution.
-            Carries the error message as a string.
-
-        status (Signal[str]):
-            Emitted to provide real-time status updates during the drawing process.
-            Typically used for logging or UI feedback.
-
-    Args:
-        controller (MachineController):
-            Reference to the controller responsible for executing the drawing logic.
-    """
 
     finished = Signal()
     error = Signal(str)
@@ -167,28 +145,6 @@ class DrawingWorker(QObject):
 
     @Slot() # marks a funtion that can receive signals and hadle
     def run(self) -> None:
-        """
-        Entry point for the worker when executed in a QThread.
-
-        This method invokes the controller's drawing loop and forwards the
-        `status` signal so that progress updates can be emitted during execution.
-
-        Behavior:
-            - Calls the controller's internal drawing loop.
-            - Emits `status` messages during execution (via the controller).
-            - Emits `error` if an exception occurs.
-            - Always emits `finished` when execution ends.
-
-        Signal Emissions:
-            status (str):
-                Emitted indirectly during drawing to report progress/log messages.
-
-            error (str):
-                Emitted if an exception is raised during execution.
-
-            finished ():
-                Emitted after completion, regardless of success or failure.
-        """
         try:
             self.controller._run_drawing_loop(self.status)
         except Exception as e:
@@ -430,36 +386,53 @@ class MachineController(QObject):
     # ---------- Drawing controls ----------
     def start_drawing(self) -> None:
         """
-        Starts drawing in a background QThread so UI remains responsive.
-        Parameters (speed, z_offset, z_hop, droplet_amount, etc.) are read live during the run.
+        Start the drawing process in a background thread.
+        The actual drawing logic runs in DrawingWorker.run().
         """
+        # Ensure printer is connected
         if self.ser is None:
             self.log("Error: No connection to the printer")
             return
+
+        # Prevent multiple drawing threads
         if self._drawing_thread is not None:
             self.log("Drawing already running")
             return
 
+        # Reset control flags (allow run, not stopped)
         self._stop_event.clear()
         self._pause_event.set()
 
-        self._drawing_thread = QThread()
-        self._worker = DrawingWorker(self)
-        self._worker.moveToThread(self._drawing_thread)
+        # Create worker thread and drawing worker
+        self._drawing_thread = QThread()                 # Background thread
+        self._worker = DrawingWorker(self)               # Contains drawing logic
+        self._worker.moveToThread(self._drawing_thread)  # Execute worker inside thread
 
+        # Start worker when thread starts
         self._drawing_thread.started.connect(self._worker.run)
+
+        # Stop thread when worker finishes
         self._worker.finished.connect(self._drawing_thread.quit)
+
+        # Clean up objects to avoid memory leaks
         self._worker.finished.connect(self._worker.deleteLater)
         self._drawing_thread.finished.connect(self._drawing_thread.deleteLater)
 
+        # Forward worker messages to UI log
         self._worker.status.connect(self.log)
+
+        # Handle worker errors
         self._worker.error.connect(lambda e: self.log(f"Error during Do Science!: {e}"))
+
+        # Final cleanup callback when thread ends
         self._drawing_thread.finished.connect(self._on_drawing_finished)
 
+        # Notify UI state
         self.drawing_running_changed.emit(True)
         self.drawing_paused_changed.emit(False)
         self.log("Start")
 
+        # Start thread → triggers worker.run()
         self._drawing_thread.start()
 
     def _on_drawing_finished(self) -> None:

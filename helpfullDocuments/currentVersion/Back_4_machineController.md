@@ -86,3 +86,66 @@ _send_and_wait_ok("G1 X10") # Move to position
 - Assumes Marlin-like firmware behavior
 - Uses blocking I/O (intended for controlled command flow)
 - Should not be used for high-frequency streaming without modification
+
+
+---
+
+# Drawing Workflow: start_drawing
+
+```python
+def start_drawing(self) -> None:
+```
+
+## Purpose
+Initializes and starts the drawing process in a separate thread to keep the UI responsive.
+
+## Architecture
+The drawing system is divided into two parts:
+
+- **start_drawing()** → sets up threading and execution
+- **DrawingWorker.run()** → executes the actual drawing logic
+
+## Execution Flow
+
+1. User triggers drawing (e.g., "Do Science!")
+2. start_drawing() performs validation and setup
+3. A QThread is created
+4. A DrawingWorker is created and moved to that thread
+5. Thread starts → worker.run() is executed
+6. Worker sends commands to the printer (via serial)
+7. When finished:
+   - Worker emits `finished`
+   - Thread stops
+   - Resources are cleaned up
+
+## Threading Model
+
+- Main thread → UI (non-blocking)
+- Worker thread → drawing execution (blocking allowed)
+
+This prevents UI freezing during long operations.
+
+## Signals Used
+
+- `started` → triggers worker.run()
+- `finished` → stops thread and cleans resources
+- `status` → sends logs to UI
+- `error` → reports runtime errors
+- `drawing_running_changed` → updates UI state
+- `drawing_paused_changed` → updates pause state
+
+## Control Flags
+
+- `_stop_event` → signals drawing to stop
+- `_pause_event` → controls pause/resume behavior
+
+## Safety Checks
+
+- Prevents execution without serial connection
+- Prevents multiple concurrent drawing threads
+
+## Notes
+
+- Drawing parameters (speed, Z offset, etc.) are read dynamically during execution
+- Thread cleanup is essential to avoid memory leaks
+- This design follows Qt best practices for long-running tasks
