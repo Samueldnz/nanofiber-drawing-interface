@@ -488,13 +488,19 @@ class MachineController(QObject):
         start_y: float,
     ) -> tuple[float, float, float, float]:
         """
-        Returns (x0, x1, y0, y1) of the work rectangle anchored at bottom-left (start_x, start_y),
-        validated to be fully inside safe bounds (SAFE HARD).
-        For Horizontal fibers: length along X, width along Y.
-        For Vertical fibers: length along Y, width along X.
+        Compute the drawing rectangle anchored at (start_x, start_y)
+        and validate it against the configured safe bounds.
+
+        Returns:
+            (x0, x1, y0, y1)
         """
+        # Get configured safe area limits
         x_min, x_max, y_min, y_max, _, _ = self._safe_center()
+
+        # Apply Y-axis offset compensation
         start_y += 20
+
+        # Compute rectangle dimensions based on fiber orientation
         if orient == "Horizontal":
             x0, x1 = start_x, start_x + length
             y0, y1 = start_y, start_y + width
@@ -502,12 +508,14 @@ class MachineController(QObject):
             x0, x1 = start_x, start_x + width
             y0, y1 = start_y, start_y + length
 
+        # Ensure the rectangle remains fully inside the safe area
         if x0 < x_min or x1 > x_max or y0 < y_min or y1 > y_max:
             raise RuntimeError(
                 f"Rectangle outside safe bounds. "
                 f"Rect: X[{x0:.2f},{x1:.2f}] Y[{y0:.2f},{y1:.2f}] | "
                 f"Safe: X[{x_min:.2f},{x_max:.2f}] Y[{y_min:.2f},{y_max:.2f}]"
             )
+
         return x0, x1, y0, y1
 
     def get_draw_rectangle(self) -> tuple[float, float, float, float]:
@@ -563,20 +571,20 @@ class MachineController(QObject):
         send = self._send_checked
 
         # header
-        send("M220 S100")
-        send("M302 S0")
-        send("M221 S100")
-        send("G90")
-        send("M82")
-        send("G1 Z2 F1500")
-        send("G92 E0")
+        send("M220 S100") #Sets movement speed multiplier to 100%.
+        send("M302 S0") #Allows extrusion at any temperature.
+        send("M221 S100") #Sets extrusion flow multiplier to 100%.
+        send("G90") #Use absolute positioning for X/Y/Z movement.
+        send("M82") #Use absolute extrusion mode.
+        send("G1 Z2 F1500") #Move Z axis to 2 mm at feedrate 1500.
+        send("G92 E0") #Reset extruder position to zero.
 
         def extrusion() -> None:
             pp = self.state.params
-            send("G91")
-            send(f"G1 E-{float(pp.droplet_amount)} F200")
-            send("G4 P1000")
-            send("G90")
+            send("G91") #Switch to relative positioning.
+            send(f"G1 E-{float(pp.droplet_amount)} F200") #move extruder by drolet amount in feedrate 200, negative way
+            send("G4 P1000") #Pause for 1000 ms
+            send("G90") 
             self.state.set_param(
                 "syringe_current_amount",
                 self.state.params.syringe_current_amount - float(pp.droplet_amount),
@@ -586,9 +594,9 @@ class MachineController(QObject):
             pp = self.state.params
             send("G91")
             send(f"G1 E-{float(pp.droplet_amount)} F200")
-            send("G4 P500")
+            send("G4 P500")  #Pause for 500 ms
             send("G90")
-            send(f"G1 F{int(pp.speed)}")
+            send(f"G1 F{int(pp.speed)}") #Reapplies configured movement feedrate.
             self.state.set_param(
                 "syringe_current_amount",
                 self.state.params.syringe_current_amount - float(pp.droplet_amount),
