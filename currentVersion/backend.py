@@ -641,22 +641,37 @@ class MachineController(QObject):
                 if y > y1 + 1e-6:
                     break
 
-                # alternate direction
+                # Alternate fiber direction to create a continuous serpentine path
+                # Even fibers: left → right
+                # Odd fibers: right → left
                 if (i % 2) == 0:
                     xs, xe = x0, x1
                 else:
                     xs, xe = x1, x0
 
+                # Move to fiber start position
                 send(f"G1 X{xs:.3f} Y{y:.3f} F{speed}")
+
+                # Lower nozzle/syringe to deposition height
                 send(f"G1 Z{zoff:.3f} F{speed}")
+
+                # Deposit initial droplet
                 extrusion()
+
+                # Raise nozzle slightly before movement
                 send(f"G1 Z{zhop:.3f} F{speed}")
+
+                # Optional stabilization delay after droplet deposition
                 if pause_ms:
                     send(f"G4 P{pause_ms}")
 
+                # Draw fiber from start point to end point
                 send(f"G1 X{xe:.3f} Y{y:.3f} F{speed}")
+
+                # Return to deposition height
                 send(f"G1 Z{zoff:.3f} F{speed}")
 
+                # Optional post-deposition extrusion/retraction step
                 if after:
                     afterdrop()
 
@@ -675,7 +690,7 @@ class MachineController(QObject):
 
                 send("M400")
 
-            else:
+            else: 
                 x = x0 + i * S
                 if x > x1 + 1e-6:
                     break
