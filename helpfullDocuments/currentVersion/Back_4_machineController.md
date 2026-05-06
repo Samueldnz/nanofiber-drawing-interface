@@ -149,3 +149,24 @@ This prevents UI freezing during long operations.
 - Drawing parameters (speed, Z offset, etc.) are read dynamically during execution
 - Thread cleanup is essential to avoid memory leaks
 - This design follows Qt best practices for long-running tasks
+
+
+
+
+# Safe Area and Rectangle Validation
+
+The function `_compute_anchored_rect()` is responsible for computing the drawing rectangle based on the selected dimensions, orientation, and starting position. Using the provided parameters, it generates the rectangle coordinates `(x0, x1, y0, y1)`, which represent the working area where the fibers will be deposited.
+
+In addition to calculating the rectangle geometry, the function also validates whether the requested drawing area remains fully inside the configured safe bounds of the machine. These bounds are defined by the safe area parameters (`safe_x_min`, `safe_x_max`, `safe_y_min`, and `safe_y_max`) and act as a software safety mechanism to prevent out-of-range movements or invalid positioning during operation.
+
+The rectangle behavior depends on the selected orientation. For horizontal fibers, the length is applied along the X axis and the width along the Y axis. For vertical fibers, the dimensions are inverted so that the length is applied along the Y axis. If any side of the rectangle exceeds the safe area, the function raises a `RuntimeError` and prevents the drawing process from starting.
+
+An important observation is the presence of the line:
+
+```python
+start_y += 20
+```
+
+which applies an additional Y-axis offset before computing the rectangle. This offset does not appear explicitly in the legacy implementation (`GUI.py`), where positioning was handled through hardcoded coordinates and implicit margins. The same offset is also present in the UI preview logic (`ui.py`), suggesting that it was introduced during the refactoring process as a positional compensation or calibration adjustment. Since the offset currently exists in both the backend geometry logic and the visualization layer, it may lead to inconsistencies or duplicated positioning behavior if not carefully managed.
+
+```
