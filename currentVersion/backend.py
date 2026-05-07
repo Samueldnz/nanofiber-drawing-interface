@@ -58,6 +58,8 @@ class Params:
     fiber_width: float = 40.0             # W (mm)
     fiber_spacing: float = 1.0            # S (mm) distância entre fibras
 
+class SyringeEmptyError(Exception):
+    pass
 
 class AppState(QObject):
     changed = Signal()
@@ -561,6 +563,17 @@ class MachineController(QObject):
         self._wait_pause_or_stop()
         self._send_and_wait_ok(cmd)
 
+    def check_syringe(self) -> Optional[str]:
+            self.ser.write(("M119\r\n").encode("utf-8"))
+            t0 = time.time()
+            while time.time() - t0 < 2.0:
+                line = self.ser.readline()
+                if line == b"filament: open\n":
+                    return "empty"
+                if line == b"filament: TRIGGERED\n":
+                    return "full"
+            return None
+
     def _run_custom_centered(self, status_signal: Signal) -> None:
         """
         Custom mode:
@@ -581,6 +594,27 @@ class MachineController(QObject):
 
         def extrusion() -> None:
             pp = self.state.params
+
+            # software validation
+            if pp.syringe_current_amount < float(pp.droplet_amount):
+                self.state.set_param("syringe_current_amount", 0.0)
+                self.log("Insufficient current value")
+                raise SyringeEmptyError(
+                    f"Insufficient syringe amount "
+                    f"({pp.syringe_current_amount:.2f})"
+                )
+            
+            # hardware validation
+            status = self.check_syringe()
+
+            if status == "empty":
+                self.state.set_param("syringe_current_amount", 0.0)
+                self.log("Syringe is empty")
+                raise SyringeEmptyError(
+                    f"Syringe sensor triggered with "
+                    f"{pp.syringe_current_amount:.2f} remaining"
+                )
+            
             send("G91") #Switch to relative positioning.
             send(f"G1 E-{float(pp.droplet_amount)} F200") #move extruder by drolet amount in feedrate 200, negative way
             send("G4 P1000") #Pause for 1000 ms
@@ -592,6 +626,25 @@ class MachineController(QObject):
 
         def afterdrop() -> None:
             pp = self.state.params
+
+            if pp.syringe_current_amount < float(pp.droplet_amount):
+                self.state.set_param("syringe_current_amount", 0.0)
+                self.log("Insufficient current value")
+                raise SyringeEmptyError(
+                    f"Insufficient syringe amount "
+                    f"({pp.syringe_current_amount:.2f})"
+                )
+            
+            # hardware validation
+            status = self.check_syringe()
+
+            if status == "empty":
+                self.log("Syringe is empty")
+                raise SyringeEmptyError(
+                    f"Syringe sensor triggered with "
+                    f"{pp.syringe_current_amount:.2f} remaining"
+                )
+            
             send("G91")
             send(f"G1 E-{float(pp.droplet_amount)} F200")
             send("G4 P500")  #Pause for 500 ms
@@ -767,28 +820,17 @@ class MachineController(QObject):
             self.log("Error: No connection to the printer")
             return
 
-        def check_syringe() -> Optional[str]:
-            self.ser.write(("M119\r\n").encode("utf-8"))
-            t0 = time.time()
-            while time.time() - t0 < 2.0:
-                line = self.ser.readline()
-                if line == b"filament: open\n":
-                    return "empty"
-                if line == b"filament: TRIGGERED\n":
-                    return "full"
-            return None
-
         try:
             self._send_and_wait_ok("M302 P1")
             self._send_and_wait_ok("M302")
 
-            status = check_syringe()
+            status = self.check_syringe()
             self._send_and_wait_ok("G91 E0")
 
             loops = 0
             while status == "full" and loops < 400:
                 self._send_and_wait_ok("G1 E-0.5 F300")
-                status = check_syringe()
+                status = self.check_syringe()
                 if status == "empty":
                     self._send_and_wait_ok("G92 E0")
                     self.state.set_param("syringe_current_amount", 0.0)
