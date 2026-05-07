@@ -729,9 +729,9 @@ class MachineController(QObject):
 
             i += 1
 
-            # footer
-            send("M300 S440 P200")
-            send("G0 X10 Y190 Z30 F3000")
+        # footer
+        send("M300 S440 P200")
+        send("G0 X10 Y190 Z30 F3000")
 
     # ---------- Legacy (ported from GUI.py logic, with live params) ----------
     
