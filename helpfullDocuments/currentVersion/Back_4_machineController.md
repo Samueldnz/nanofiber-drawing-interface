@@ -171,7 +171,31 @@ which applies an additional Y-axis offset before computing the rectangle. This o
 
 
 
+# Drawing Configuration – Experimental Parameters
 
+These parameters define the fiber geometry, motion settings, and extrusion behavior considering the yellow square in the middle.
+
+| Parameter      | Value         |
+| -------------- | ------------- |
+| Orientation    | Horizontal    |
+| Fiber Length   | 95.00 mm      |
+| Fiber Width    | 135.00 mm     |
+| Fiber Spacing  | 1.00 mm       |
+| Starting X     | 30.00 mm      |
+| Starting Y     | 70.00 mm      |
+| Speed          | 1500 mm/min   |
+| Droplet Amount | 1.000 E units |
+| Z-Offset       | 0.400 mm      |
+| Z-Hop          | 10.00 mm      |
+| Pause          | 0 ms          |
+| Afterdrop      | Enabled       |
+| Clean          | Enabled       |
+
+## Observations
+
+* The drawing was configured using the new rectangular anchored drawing mode implemented in `backend.py`.
+* The selected orientation was horizontal, resulting in alternating left-to-right and right-to-left fiber deposition.
+* The `Afterdrop` and `Clean` routines were both enabled during the execution.
 
 
 
