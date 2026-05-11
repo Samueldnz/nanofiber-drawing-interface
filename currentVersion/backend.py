@@ -595,7 +595,15 @@ class MachineController(QObject):
         def extrusion() -> None:
             pp = self.state.params
 
-            # software validation
+            # -------------------------------------------------
+            # SOFTWARE-BASED SYRINGE VALIDATION
+            # Prevent extrusion if the estimated remaining
+            # syringe amount is smaller than the requested
+            # droplet deposition amount.
+            # This avoids negative bookkeeping values and
+            # prevents deposition attempts with insufficient
+            # material.
+            # -------------------------------------------------
             if pp.syringe_current_amount < float(pp.droplet_amount):
                 self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Insufficient current value")
@@ -604,7 +612,13 @@ class MachineController(QObject):
                     f"({pp.syringe_current_amount:.2f})"
                 )
             
-            # hardware validation
+            # -------------------------------------------------
+            # HARDWARE-BASED SYRINGE VALIDATION
+            # Query the physical syringe sensor using M119
+            # before performing extrusion.
+            # If the sensor reports an empty condition,
+            # interrupt the drawing process safely.
+            # -------------------------------------------------
             status = self.check_syringe()
 
             if status == "empty":
@@ -615,10 +629,23 @@ class MachineController(QObject):
                     f"{pp.syringe_current_amount:.2f} remaining"
                 )
             
-            send("G91") #Switch to relative positioning.
+            # -------------------------------------------------
+            # INITIAL DROPLET DEPOSITION
+            # Switch to relative extrusion mode and push
+            # material according to the configured droplet
+            # amount. A short pause is applied to stabilize
+            # deposition before motion continues.
+            # -------------------------------------------------
+            send("G91") # Use relative positioning
             send(f"G1 E-{float(pp.droplet_amount)} F200") #move extruder by drolet amount in feedrate 200, negative way
-            send("G4 P1000") #Pause for 1000 ms
-            send("G90") 
+            send("G4 P1000") # Wait 1000 ms for stabilization
+            send("G90")  # Restore absolute positioning
+
+            # -------------------------------------------------
+            # UPDATE SOFTWARE BOOKKEEPING
+            # Subtract the deposited amount from the current
+            # estimated syringe content.
+            # -------------------------------------------------
             self.state.set_param(
                 "syringe_current_amount",
                 self.state.params.syringe_current_amount - float(pp.droplet_amount),
@@ -627,6 +654,12 @@ class MachineController(QObject):
         def afterdrop() -> None:
             pp = self.state.params
 
+            # -------------------------------------------------
+            # SOFTWARE-BASED SYRINGE VALIDATION
+            # Prevent afterdrop deposition if there is not
+            # enough estimated material remaining in the
+            # syringe.
+            # -------------------------------------------------
             if pp.syringe_current_amount < float(pp.droplet_amount):
                 self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Insufficient current value")
@@ -635,7 +668,11 @@ class MachineController(QObject):
                     f"({pp.syringe_current_amount:.2f})"
                 )
             
-            # hardware validation
+             # -------------------------------------------------
+            # HARDWARE-BASED SYRINGE VALIDATION
+            # Verify the physical syringe sensor state before
+            # executing the afterdrop routine.
+            # -------------------------------------------------
             status = self.check_syringe()
 
             if status == "empty":
@@ -645,11 +682,23 @@ class MachineController(QObject):
                     f"{pp.syringe_current_amount:.2f} remaining"
                 )
             
-            send("G91")
+            # -------------------------------------------------
+            # AFTERDROP DEPOSITION
+            # Perform the secondary extrusion step after the
+            # fiber path finishes. A shorter stabilization
+            # delay is used compared to the initial droplet.
+            # -------------------------------------------------
+            send("G91") 
             send(f"G1 E-{float(pp.droplet_amount)} F200")
-            send("G4 P500")  #Pause for 500 ms
+            send("G4 P500")  
             send("G90")
-            send(f"G1 F{int(pp.speed)}") #Reapplies configured movement feedrate.
+            send(f"G1 F{int(pp.speed)}") 
+
+            # -------------------------------------------------
+            # UPDATE SOFTWARE BOOKKEEPING
+            # Update the estimated remaining syringe amount
+            # after the afterdrop deposition.
+            # -------------------------------------------------
             self.state.set_param(
                 "syringe_current_amount",
                 self.state.params.syringe_current_amount - float(pp.droplet_amount),
