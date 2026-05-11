@@ -605,11 +605,12 @@ class MachineController(QObject):
             # material.
             # -------------------------------------------------
             if pp.syringe_current_amount < float(pp.droplet_amount):
+                remaining = pp.syringe_current_amount
                 self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Insufficient current value")
                 raise SyringeEmptyError(
                     f"Insufficient syringe amount "
-                    f"({pp.syringe_current_amount:.2f})"
+                    f"({remaining:.2f})"
                 )
             
             # -------------------------------------------------
@@ -622,11 +623,12 @@ class MachineController(QObject):
             status = self.check_syringe()
 
             if status == "empty":
+                remaining = pp.syringe_current_amount
                 self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Syringe is empty")
                 raise SyringeEmptyError(
                     f"Syringe sensor triggered with "
-                    f"{pp.syringe_current_amount:.2f} remaining"
+                    f"{remaining:.2f} remaining"
                 )
             
             # -------------------------------------------------
@@ -661,11 +663,12 @@ class MachineController(QObject):
             # syringe.
             # -------------------------------------------------
             if pp.syringe_current_amount < float(pp.droplet_amount):
+                remaining = pp.syringe_current_amount
                 self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Insufficient current value")
                 raise SyringeEmptyError(
                     f"Insufficient syringe amount "
-                    f"({pp.syringe_current_amount:.2f})"
+                    f"({remaining:.2f})"
                 )
             
              # -------------------------------------------------
@@ -676,10 +679,12 @@ class MachineController(QObject):
             status = self.check_syringe()
 
             if status == "empty":
+                remaining = pp.syringe_current_amount
+                self.state.set_param("syringe_current_amount", 0.0)
                 self.log("Syringe is empty")
                 raise SyringeEmptyError(
                     f"Syringe sensor triggered with "
-                    f"{pp.syringe_current_amount:.2f} remaining"
+                    f"{remaining:.2f} remaining"
                 )
             
             # -------------------------------------------------
