@@ -156,4 +156,106 @@ The modification successfully eliminated unnecessary travel operations between f
 
 
 
+# **Experimental Log – Syringe Empty Validation During Drawing (11/05/2026)**
+
+A safety issue was identified during the drawing process related to syringe depletion handling inside the deposition routines. During long fiber deposition sequences, the software continued executing extrusion commands even after the syringe became physically empty and the software counter reached zero. As a consequence, the system continued sending extrusion commands while the `syringe_current_amount` value became negative.
+
+The original implementation inside both `extrusion()` and `afterdrop()` executed material deposition unconditionally:
+
+```python
+send("G91")
+send(f"G1 E-{float(pp.droplet_amount)} F200")
+send("G90")
+```
+
+while the syringe bookkeeping logic continuously subtracted material from the software counter:
+
+```python
+self.state.set_param(
+    "syringe_current_amount",
+    self.state.params.syringe_current_amount
+    - float(pp.droplet_amount),
+)
+```
+
+without validating whether sufficient material remained available in the syringe.
+
+Additionally, the physical syringe sensor verification logic already existed through the `M119` command inside the `check_syringe()` routine:
+
+```python
+def check_syringe(self) -> Optional[str]:
+    self.ser.write(("M119\r\n").encode("utf-8"))
+```
+
+however, the sensor validation was not integrated into the active deposition routines during drawing execution.
+
+To investigate the issue, syringe depletion validation was added to both `extrusion()` and `afterdrop()`, combining:
+
+* software-based syringe amount verification;
+* hardware-based syringe sensor verification using `M119`;
+* controlled interruption of the drawing loop through `SyringeEmptyError`;
+* preservation of safe footer execution after depletion events.
+
+## Proposed Test
+
+The test was performed using a continuous multi-fiber deposition pattern with repeated extrusion cycles until the syringe approached depletion. During execution, the following behaviors were monitored:
+
+* evolution of `syringe_current_amount`;
+* response of the `M119` syringe sensor;
+* interruption behavior after depletion detection;
+* execution of the footer parking routine after stopping.
+
+The objective of the experiment was to verify whether the new depletion protection prevented invalid extrusion operations while still allowing the machine to terminate the drawing safely.
+
+### Expected Behaviors
+
+* **Case 1 — Syringe depletion protection works correctly**
+
+The system should:
+
+* continuously execute deposition while material remains available;
+* stop extrusion immediately after depletion is detected;
+* prevent `syringe_current_amount` from becoming negative;
+* interrupt the drawing loop safely using `SyringeEmptyError`;
+* still execute the footer parking routine after interruption.
+
+This means:
+
+* the syringe validation logic is functioning correctly;
+* the drawing process terminates safely after depletion;
+* software and hardware depletion protection are operating properly.
+
+- **Case 2 — Protection fails during deposition**
+
+The system should:
+
+* continue executing extrusion after depletion;
+* allow `syringe_current_amount` to become negative;
+* fail to interrupt the drawing process;
+* skip or improperly execute footer logic after interruption.
+
+This means:
+
+* the depletion validation is incomplete or incorrectly integrated;
+* the drawing interruption architecture requires revision.
+
+## Results
+
+The experimental tests confirmed the behavior described in **Case 1**. After integrating syringe validation into both `extrusion()` and `afterdrop()`, the system successfully interrupted the drawing process when depletion conditions were detected.
+
+The software-based validation prevented extrusion attempts when the remaining syringe amount became smaller than the configured droplet deposition amount, while the hardware-based validation continuously monitored the physical syringe sensor through `M119`.
+
+The tests also confirmed that the newly introduced `SyringeEmptyError` architecture correctly interrupted the drawing loop without activating the global `_stop_event`, allowing the footer section:
+
+```python
+send("M300 S440 P200")
+send("G0 X10 Y190 Z30 F3000")
+```
+
+to execute safely after depletion events.
+
+During the experiments, an additional observation was identified: the physical syringe sensor occasionally triggered before the software counter reached zero, indicating that the sensor behavior corresponds to a low-material threshold rather than an exact empty-volume condition. As a result, the software counter was preserved independently from the hardware sensor state to avoid artificially forcing the remaining amount to zero during premature sensor activation.
+
+The modification successfully eliminated negative syringe amount values, prevented invalid extrusion operations after depletion, and restored safe controlled termination behavior during long deposition routines.
+
 
