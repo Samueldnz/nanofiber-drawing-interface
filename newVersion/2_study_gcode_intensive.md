@@ -448,3 +448,245 @@ M84           ; disable motors
 # Questions
 
 * what is the firmware of this printer? Do it match with official Marlin?
+
+* whats is the radius of the filament?
+* extrusion width?
+* layer height?
+
+
+
+# Exercises
+
+## write one line and comment each line in the file
+
+What I built:
+
+```gcode
+G28               ; set home
+M207 S1.0 F1500   ; set retraction settings
+M208 F1500        ; set recovery settings
+M109 S200         ; set hotend temperature and wait
+G90               ; absolute moves
+G1 F1500          ; set feedrate
+G2 E0             ; reset E position
+G0 X10            ; go to X position 10
+G1 X20 E20        ; move from X10 to X20 extruding
+G91               ; relative moves
+G10               ; retraction
+G90               ; absolute moves
+M400              ; wait moves finish
+G91               ; relative mode
+G1 Z10 F1200      ; lift nozzle
+G90               ; absolute mode
+G1 X0 Y220 F3000  ; park head
+M104 S0           ; nozzle heater off
+M140 S0           ; bed heater off
+M107              ; fan off
+M84               ; disable motors
+```
+
+Correction:
+```gcode
+G28               ; home all axes
+
+M207 S1.0 F1500  ; configure retract settings
+M208 F1500       ; configure recovery settings
+
+M109 S200        ; set hotend temperature and wait
+
+G90              ; absolute positioning
+M83              ; relative extrusion mode
+
+G92 E0           ; reset extruder position
+
+G1 F1500         ; set feedrate
+
+G0 X10 Y0 Z0.2   ; move to start position without extrusion
+G1 X20 E0.5      ; move from X10 to X20 while extruding
+
+G10              ; retract filament
+
+M400             ; wait moves finish
+G91              ; relative mode
+G1 Z10 F1200     ; lift nozzle
+G90              ; absolute mode
+G1 X0 Y220 F3000 ; park head
+M104 S0          ; nozzle heater off
+M140 S0          ; bed heater off
+M107             ; fan off
+M84              ; disable motors
+```
+
+## write a square and comment each line
+
+What I built:
+```gcode
+G28              ; home all axes
+
+M207 S1.0 F1500  ; configure retract settings
+M208 F1500       ; configure recovery settings
+
+M109 S200        ; set hotend temperature and wait
+
+G90              ; absolute positioning
+M83              ; relative extrusion mode
+
+G92 E0           ; reset extruder position
+G1 F1500         ; set feedrate
+
+G0 X10 Y0 Z0.2   ; move to start position without extrusion
+
+G1 X20 E0.5      ; move from X10 to X20 while extruding
+G10              ; retraction
+G4 P100          ; dwell for 100ms
+G11              ; recovery
+
+G1 Y10 E0.5      ; move from X20 Y0 to X20 Y10 while extruding
+G10              ; retraction
+G4 P100          ; dwell for 100ms
+G11              ; recovery
+
+G1 X10 E0.5      ; move from X20 Y10 to X10 Y10 while extruding
+G10              ; retraction
+G4 P100          ; dwell for 100ms
+G11              ; recovery
+
+G1 Y0 E0.5       ; move from X10 Y10 to X10 Y0 while extruding
+G10              ; retraction
+
+M400             ; wait moves finish
+G91              ; relative mode
+G1 Z10 F1200     ; lift nozzle
+G90              ; absolute mode
+G1 X0 Y220 F3000 ; park head
+M104 S0          ; nozzle heater off
+M140 S0          ; bed heater off
+M107             ; fan off
+M84              ; disable motors
+```
+
+Correction:
+```gcode
+G28              ; home all axes
+
+M207 S1.0 F1500  ; configure retract settings
+M208 F1500       ; configure recovery settings
+
+M109 S200        ; set hotend temperature and wait
+
+G90              ; absolute positioning
+M83              ; relative extrusion mode
+
+G92 E0           ; reset extruder position
+G1 F1500         ; set feedrate
+
+G0 X10 Y0 Z0.2   ; move to start position without extrusion
+
+G1 X20 Y0 E0.5   ; move from X10 to X20 while extruding
+G1 Y10 E0.5      ; move from X20 Y0 to X20 Y10 while extruding
+G1 X10 E0.5      ; move from X20 Y10 to X10 Y10 while extruding
+G1 Y0 E0.5       ; move from X10 Y10 to X10 Y0 while extruding
+
+G10              ; retraction
+
+M400             ; wait moves finish
+G91              ; relative mode
+G1 Z10 F1200     ; lift nozzle
+G90              ; absolute mode
+G1 X0 Y220 F3000 ; park head
+M104 S0          ; nozzle heater off
+M140 S0          ; bed heater off
+M107             ; fan off
+M84              ; disable motors
+```
+
+
+## write two layers and comment out the lines
+
+What I built
+```gcode
+G28              ; home all axes
+
+M207 S1.0 F1500  ; configure retract settings
+M208 F1500       ; configure recovery settings
+
+M109 S200        ; set hotend temperature and wait
+
+G90              ; absolute positioning
+M83              ; relative extrusion mode
+
+G92 E0           ; reset extruder position
+
+G1 F1500         ; set feedrate
+
+G0 X10           ; move to X10 without extrusion
+G1 X20 E0.5      ; move from X10 to X20 while extruding
+
+G10              ; retraction
+
+G0 Z0.2          ; move to the second layer
+
+G11              ; recovery
+
+G1 X10 E0.5      ; move back to the original point
+
+G10              ; retract filament
+
+M400             ; wait moves finish
+G91              ; relative mode
+G1 Z10 F1200     ; lift nozzle
+G90              ; absolute mode
+G1 X0 Y220 F3000 ; park head
+M104 S0          ; nozzle heater off
+M140 S0          ; bed heater off
+M107             ; fan off
+M84              ; disable motors
+```
+
+Correction:
+```gcode
+G28              ; home all axes
+
+M207 S1.0 F1500  ; configure retract settings
+M208 F1500       ; configure recovery settings
+
+M109 S200        ; set hotend temperature and wait
+
+G90              ; absolute positioning
+M83              ; relative extrusion mode
+
+G92 E0           ; reset extruder position
+
+G1 F1500         ; set feedrate
+
+; ----- Layer 1 -----
+
+G0 X10 Y0 Z0.2   ; move to start position without extrusion
+G1 X20 E0.5      ; print first layer line
+
+G10              ; retract filament
+
+; ----- Layer 2 -----
+
+G0 Z0.4          ; move to second layer
+
+G11              ; recover filament
+
+G1 X10 E0.5      ; print second layer line
+
+G10              ; retract filament
+
+M400             ; wait moves finish
+G91              ; relative mode
+G1 Z10 F1200     ; lift nozzle
+G90              ; absolute mode
+G1 X0 Y220 F3000 ; park head
+M104 S0          ; nozzle heater off
+M140 S0          ; bed heater off
+M107             ; fan off
+M84              ; disable motors
+```
+
+
+
+
