@@ -1,6 +1,6 @@
 def _run_custom_centered(self, status_signal: Signal) -> None:
 
-    send = self._send_checked # reference
+    send = self._send_checked
 
     #header 
     send("M220 S100") #Sets movement speed multiplier to 100%.
@@ -44,38 +44,34 @@ def _run_custom_centered(self, status_signal: Signal) -> None:
 
         E = V / A_f
         return E
+    
+    
+    def run_horizontal_pass():
+        is_retracted = False
+        i = 0
 
-    is_retracted = False
-    i = 0
-    while True:
-        # allow live updates to apply to the NEXT fiber safely
-        pp = self.state.params
+        while True:
+            pp = self.state.params
 
-        orient = str(pp.fiber_orientation)
-        L = float(pp.fiber_length)
-        W = float(pp.fiber_width)
-        S = float(pp.fiber_spacing)
+            L = float(pp.fiber_length)
+            W = float(pp.fiber_width)
+            S = float(pp.fiber_spacing)
 
-        if L <= 0 or W < 0:
-            raise RuntimeError("Fiber length must be > 0 and width must be >= 0")
-        if S <= 0:
-            raise RuntimeError("Fiber spacing must be > 0")
-        
-        # SAFE HARD rectangle (raises if out of bounds)
-        x0, x1, y0, y1 = self._compute_anchored_rect(
-            L, W, orient, float(pp.start_x), float(pp.start_y)
-        )
+            if L <= 0 or W < 0:
+                raise RuntimeError("Fiber length must be > 0 and width must be >= 0")
+            if S <= 0:
+                raise RuntimeError("Fiber spacing must be > 0")
+            
+            # SAFE HARD rectangle (raises if out of bounds)
+            x0, x1, y0, y1 = self._compute_anchored_rect(
+                L, W, orient, float(pp.start_x), float(pp.start_y)
+            )
 
-        speed = int(pp.speed)
-        zoff = float(pp.z_offset)
-        zhop = float(pp.z_hop)
-        pause_ms = int(pp.pause_ms)
-        clean = bool(pp.clean)
-        temperature = float(pp.temperature)
+            speed = int(pp.speed)
+            zoff = float(pp.z_offset)
+            clean = bool(pp.clean)
 
-        if orient == "Horizontal":
             y = y0 + i * S
-
             if y > y1 + 1e-6: #if new y is bigger than safe rect
                 break
 
@@ -88,7 +84,6 @@ def _run_custom_centered(self, status_signal: Signal) -> None:
                 xs, xe = x1, x0
 
             E = filament_length_to_extrude(xs, y, xe, y)
-
 
             # Move to fiber start position
             send(f"G0 X{xs:.3f} Y{y:.3f} F{speed}")
@@ -119,8 +114,35 @@ def _run_custom_centered(self, status_signal: Signal) -> None:
                 send(f"G0 Z3 F{speed}")
 
             send("M400")
-        else:
+            i += 1
+    
+    def run_vertical_pass():
+        is_retracted = False
+        i = 0
+
+        while True:
+            pp = self.state.params
+
+            L = float(pp.fiber_length)
+            W = float(pp.fiber_width)
+            S = float(pp.fiber_spacing)
+
+            if L <= 0 or W < 0:
+                raise RuntimeError("Fiber length must be > 0 and width must be >= 0")
+            if S <= 0:
+                raise RuntimeError("Fiber spacing must be > 0")
+            
+            # SAFE HARD rectangle (raises if out of bounds)
+            x0, x1, y0, y1 = self._compute_anchored_rect(
+                L, W, orient, float(pp.start_x), float(pp.start_y)
+            )
+
+            speed = int(pp.speed)
+            zoff = float(pp.z_offset)
+            clean = bool(pp.clean)
+
             x = x0 + i * S
+
             if x > x1 + 1e-6:
                 break
 
@@ -128,7 +150,7 @@ def _run_custom_centered(self, status_signal: Signal) -> None:
                 ys, ye = y0, y1
             else:
                 ys, ye = y1, y0
-            
+
             E = filament_length_to_extrude(x, ys, x, ye)
 
             send(f"G0 X{x:.3f} Y{ys:.3f} F{speed}")
@@ -157,27 +179,27 @@ def _run_custom_centered(self, status_signal: Signal) -> None:
                 send(f"G0 Z3 F{speed}")
             
             send("M400")
+            i += 1
 
-        i += 1
+
+
+    orient = str(self.state.params.fiber_orientation)
+
+    if orient == "Horizontal":
+        run_horizontal_pass()
+
+    elif orient == "Vertical":
+        run_vertical_pass()
+
+    elif orient == "Both":
+        run_horizontal_pass()
+        run_vertical_pass()
 
     send("M300 S440 P200")
     send("G0 X10 Y190 Z30 F3000")
 
 
+# NOTES: now with modularization I can pass Z axel as a parameter to these function like in the example below
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# run_horizontal_pass(z=0.2)
+# run_vertical_pass(z=0.35)
