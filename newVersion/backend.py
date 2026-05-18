@@ -37,6 +37,7 @@ class Params:
     z_hop: float = 10.0              # mm
     pause_ms: int = 0                # ms (G4 P...)
     z_offset: float = 0.4            # mm
+    temperature: float = 200.0       # celsius
 
     afterdrop: bool = True
     clean: bool = True
@@ -473,7 +474,8 @@ class MachineController(QObject):
             return
         self._stop_event.set()
         self._pause_event.set()
-        # ??? INCOMPLETE ???
+        
+        self.log("Stopping drawing...")
     
     def emergency_stop(self) -> None:
         """
@@ -637,7 +639,7 @@ class MachineController(QObject):
         """
 
         # machine compensation
-        start_y += 20
+        start_y += 20  #eventually this should become: machine_y_offset, but need test first
 
         if axis == "horizontal":
 
@@ -942,8 +944,6 @@ class MachineController(QObject):
         y1: float,
         status_signal: Signal,
     ) -> None:
-
-        send = self._send_checked
 
         is_retracted = False
         i = 0
