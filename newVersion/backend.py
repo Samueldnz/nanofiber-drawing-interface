@@ -5,9 +5,11 @@ from typing import Optional, Dict, Any, Tuple
 
 from PySide6.QtCore import QObject, Signal, QThread, Slot
 
+
 import json
 import time
 import threading
+import math
 
 try:
     import serial
@@ -53,7 +55,7 @@ class Params:
     start_x: float = 0
     start_y: float = 0
     # --- CustomCentered parameters ---
-    fiber_orientation: str = "Horizontal"  # Horizontal | Vertical
+    fiber_orientation: str = "Horizontal"  # Horizontal | Vertical | Both
     fiber_length: float = 80.0            # L (mm)
     fiber_width: float = 40.0             # W (mm)
     fiber_spacing: float = 1.0            # S (mm) distância entre fibras
@@ -385,4 +387,697 @@ class MachineController(QObject):
             + (f" (last: {last_nonempty})" if last_nonempty else "")
         )
     
+    # ---------- Drawing controls ----------
+    def start_drawing(self) -> None:
+        """
+        Start the drawing process in a background thread.
+        The actual drawing logic runs in DrawingWorker.run().
+        """
+        # Ensure printer is connected
+        if self.ser is None:
+            self.log("Error: No connection to the printer")
+            return
+
+        # Prevent multiple drawing threads
+        if self._drawing_thread is not None:
+            self.log("Drawing already running")
+            return
+
+        # Reset control flags (allow run, not stopped)
+        self._stop_event.clear()
+        self._pause_event.set()
+
+        # Create worker thread and drawing worker
+        self._drawing_thread = QThread()                 # Background thread
+        self._worker = DrawingWorker(self)               # Contains drawing logic
+        self._worker.moveToThread(self._drawing_thread)  # Execute worker inside thread
+
+        # Start worker when thread starts
+        self._drawing_thread.started.connect(self._worker.run)
+
+        # Stop thread when worker finishes
+        self._worker.finished.connect(self._drawing_thread.quit)
+
+        # Clean up objects to avoid memory leaks
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._drawing_thread.finished.connect(self._drawing_thread.deleteLater)
+
+        # Forward worker messages to UI log
+        self._worker.status.connect(self.log)
+
+        # Handle worker errors
+        self._worker.error.connect(lambda e: self.log(f"Error during Do Science!: {e}"))
+
+        # Final cleanup callback when thread ends
+        self._drawing_thread.finished.connect(self._on_drawing_finished)
+
+        # Notify UI state
+        self.drawing_running_changed.emit(True)
+        self.drawing_paused_changed.emit(False)
+        self.log("Start")
+
+        # Start thread → triggers worker.run()
+        self._drawing_thread.start()
+
+    def _on_drawing_finished(self) -> None:
+        self._drawing_thread = None
+        self._worker = None
+        self.drawing_running_changed.emit(False)
+        self.drawing_paused_changed.emit(False)
+        self.log("Finished")
+
+    def pause_drawing(self) -> None:
+        if self._drawing_thread is None:
+            return
+        self._pause_event.clear()
+        self.drawing_paused_changed.emit(True)
+        self.log("Paused")
+
+    def resume_drawing(self) -> None:
+        if self._drawing_thread is None:
+            return
+        self._pause_event.set()
+        self.drawing_paused_changed.emit(False)
+        self.log("Resumed")
+
+    def toggle_pause(self) -> None:
+        if self._drawing_thread is None:
+            return
+        if self._pause_event.is_set():
+            self.pause_drawing()
+        else:
+            self.resume_drawing()
+
+    def stop_drawing(self) -> None:
+        if self._drawing_thread is None:
+            return
+        self._stop_event.set()
+        self._pause_event.set()
+        # ??? INCOMPLETE ???
     
+    def emergency_stop(self) -> None:
+        """
+        Immediate firmware-level emergency stop.
+
+        Sends M112 directly to the printer,
+        bypassing normal checked communication.
+        """
+
+        # stop internal execution state
+        self._stop_event.set()
+
+        # release pause state
+        self._pause_event.set()
+
+        try:
+
+            if self.ser is not None:
+
+                # firmware emergency stop
+                self.ser.write(b"M112\n")
+
+                # optional flush
+                self.ser.flush()
+
+            self.log("EMERGENCY STOP triggered")
+
+        except Exception as e:
+
+            self.log(f"Emergency stop failed: {e}")
+
+        # update UI state immediately
+        self.drawing_running_changed.emit(False)
+        self.drawing_paused_changed.emit(False)
+    
+    def reset_after_emergency(self) -> bool:
+        """
+        Recover printer communication after an emergency stop.
+
+        This function:
+        1. Clears internal execution flags
+        2. Sends firmware reset/recovery command (M999)
+        3. Reinitializes machine state
+        4. Restores controller/UI state
+
+        Returns:
+            True if recovery succeeded
+            False otherwise
+        """
+
+        try:
+
+            # printer must still be connected
+            if self.ser is None:
+                self.log("Cannot reset: printer not connected")
+                return False
+
+            # clear controller state
+            self._stop_event.clear()
+            self._pause_event.set()
+
+            # clear serial buffers
+            try:
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+            except Exception:
+                pass
+
+            self.log("Attempting firmware recovery...")
+
+            # ---------------- firmware reset ----------------
+
+            # M999 = restart after M112 emergency stop
+            self.ser.write(b"M999\n")
+            self.ser.flush()
+
+            # give firmware time to recover
+            time.sleep(2.0)
+
+            # ---------------- reinitialize machine ----------------
+
+            self.log("Reinitializing printer state...")
+
+            self._send_and_wait_ok("G90")
+            self._send_and_wait_ok("M82")
+            self._send_and_wait_ok("G92 E0")
+
+            # optional re-home
+            self.log("Rehoming printer...")
+            self._send_and_wait_ok("G28", timeout_s=120.0)
+
+            self.drawing_running_changed.emit(False)
+            self.drawing_paused_changed.emit(False)
+
+            self.log("Emergency recovery completed")
+
+            return True
+
+        except Exception as e:
+
+            self.log(f"Recovery failed: {e}")
+
+            # safest fallback:
+            # fully disconnect serial
+            try:
+                self.disconnect()
+            except Exception:
+                pass
+
+            return False
+    
+    # ---------- Safe area helpers ----------
+    def _safe_center(self) -> tuple[float, float, float, float, float, float]:
+        p = self.state.params
+        x_min, x_max, y_min, y_max = p.safe_x_min, p.safe_x_max, p.safe_y_min, p.safe_y_max
+        xc = (x_min + x_max) / 2.0
+        yc = (y_min + y_max) / 2.0
+        return x_min, x_max, y_min, y_max, xc, yc
+
+    def _validate_rect(
+        self,
+        x0: float,
+        x1: float,
+        y0: float,
+        y1: float,
+    ) -> tuple[float, float, float, float]:
+        """
+        Validate rectangle against configured safe bounds.
+        Returns the same rectangle if valid.
+        """
+
+        x_min, x_max, y_min, y_max, _, _ = self._safe_center()
+
+        if x0 < x_min or x1 > x_max or y0 < y_min or y1 > y_max:
+            raise RuntimeError(
+                f"Rectangle outside safe bounds. "
+                f"Rect: X[{x0:.2f},{x1:.2f}] Y[{y0:.2f},{y1:.2f}] | "
+                f"Safe: X[{x_min:.2f},{x_max:.2f}] Y[{y_min:.2f},{y_max:.2f}]"
+            )
+
+        return x0, x1, y0, y1
+
+
+    def _compute_anchored_rect(
+        self,
+        length: float,
+        width: float,
+        start_x: float,
+        start_y: float,
+        axis: str,
+    ) -> tuple[float, float, float, float]:
+        """
+        Compute a rectangle anchored at (start_x, start_y).
+
+        axis:
+            "horizontal" -> fibers run along X
+            "vertical"   -> fibers run along Y
+
+        Returns:
+            (x0, x1, y0, y1)
+        """
+
+        # machine compensation
+        start_y += 20
+
+        if axis == "horizontal":
+
+            # length along X
+            # width along Y
+            x0 = start_x
+            x1 = start_x + length
+
+            y0 = start_y
+            y1 = start_y + width
+
+        elif axis == "vertical":
+
+            # width along X
+            # length along Y
+            x0 = start_x
+            x1 = start_x + width
+
+            y0 = start_y
+            y1 = start_y + length
+
+        else:
+            raise RuntimeError(f"Invalid axis: {axis}")
+
+        return self._validate_rect(x0, x1, y0, y1)
+
+
+    def _get_active_rectangles(
+        self,
+    ) -> list[tuple[str, tuple[float, float, float, float]]]:
+        """
+        Returns all active drawing rectangles according
+        to the selected orientation.
+
+        Returns:
+            [
+                ("horizontal", (x0, x1, y0, y1)),
+                ("vertical",   (x0, x1, y0, y1)),
+            ]
+        """
+
+        p = self.state.params
+
+        orientation = str(p.fiber_orientation)
+
+        rectangles = []
+
+        if orientation == "Horizontal":
+
+            rect = self._compute_anchored_rect(
+                length=float(p.fiber_length),
+                width=float(p.fiber_width),
+                start_x=float(p.start_x),
+                start_y=float(p.start_y),
+                axis="horizontal",
+            )
+
+            rectangles.append(("horizontal", rect))
+
+        elif orientation == "Vertical":
+
+            rect = self._compute_anchored_rect(
+                length=float(p.fiber_length),
+                width=float(p.fiber_width),
+                start_x=float(p.start_x),
+                start_y=float(p.start_y),
+                axis="vertical",
+            )
+
+            rectangles.append(("vertical", rect))
+
+        elif orientation == "Both":
+
+            h_rect = self._compute_anchored_rect(
+                length=float(p.fiber_length),
+                width=float(p.fiber_width),
+                start_x=float(p.start_x),
+                start_y=float(p.start_y),
+                axis="horizontal",
+            )
+
+            v_rect = self._compute_anchored_rect(
+                length=float(p.fiber_length),
+                width=float(p.fiber_width),
+                start_x=float(p.start_x),
+                start_y=float(p.start_y),
+                axis="vertical",
+            )
+
+            rectangles.append(("horizontal", h_rect))
+            rectangles.append(("vertical", v_rect))
+
+        else:
+            raise RuntimeError(f"Invalid orientation: {orientation}")
+
+        return rectangles
+
+    def draw_rectangles_are_valid(self) -> bool:
+        try:
+            _ = self._get_active_rectangles()
+            return True
+        except Exception:
+            return False
+    
+    @staticmethod
+    def _clamp(v: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, v))
+
+    # ---------- Drawing loop ----------
+    def _run_drawing_loop(self, status_signal: Signal) -> None:
+        if self.ser is None:
+            raise RuntimeError("No connection to the printer")
+        self._run_custom_centered(status_signal)
+
+    def _wait_pause_or_stop(self) -> None:
+        # allows responsive stop while paused
+        while not self._pause_event.is_set():
+            if self._stop_event.is_set():
+                raise RuntimeError("Stopped")
+            time.sleep(0.05)
+        if self._stop_event.is_set():
+            raise RuntimeError("Stopped")
+
+    def _send_checked(self, cmd: str) -> None:
+        if self._stop_event.is_set():
+            raise RuntimeError("Stopped")
+        self._wait_pause_or_stop()
+        self._send_and_wait_ok(cmd)
+
+    def _line_length(self, x0, y0, x1, y1):
+        return math.sqrt(pow((x1 - x0), 2) + pow((y1 - y0), 2))
+    
+    def _deposited_volume(self, d):
+        # d = distance calculed with line_length
+        # w = layer`s width default 0.45
+        # h = layer`s height default 0.2
+        # V = deposited volume
+        V = d * 0.45 * 0.2
+        return V
+    
+    def _filament_area(self):
+        # considering diameter = 1.75mm
+        r = 1.75 / 2 # 0.875mm
+        A_f = math.pi * pow(r, 2)
+        return A_f
+    
+    def _filament_length_to_extrude(self, x0, y0, x1, y1):
+        d = self._line_length(x0, y0, x1, y1)
+
+        V = self._deposited_volume(d)
+        A_f = self._filament_area()
+
+        E = V / A_f
+        return E
+
+    def _horizontal_fiber(
+        self,
+        i: int,
+        x0: float,
+        x1: float,
+        y0: float,
+        spacing: float,
+    ) -> tuple[float, float, float, float]:
+        """
+        Generate one horizontal serpentine fiber.
+        Returns:
+            (xs, ys, xe, ye)
+        """
+
+        y = y0 + i * spacing
+
+        # serpentine motion
+        if (i % 2) == 0:
+            xs, xe = x0, x1
+        else:
+            xs, xe = x1, x0
+
+        return xs, y, xe, y
+
+
+    def _vertical_fiber(
+        self,
+        i: int,
+        x0: float,
+        y0: float,
+        y1: float,
+        spacing: float,
+    ) -> tuple[float, float, float, float]:
+        """
+        Generate one vertical serpentine fiber.
+        Returns:
+            (xs, ys, xe, ye)
+        """
+
+        x = x0 + i * spacing
+
+        # serpentine motion
+        if (i % 2) == 0:
+            ys, ye = y0, y1
+        else:
+            ys, ye = y1, y0
+
+        return x, ys, x, ye
+
+
+    def _clean_motion(
+        self,
+        axis: str,
+        xe: float,
+        ye: float,
+        x0: float,
+        x1: float,
+        y0: float,
+        y1: float,
+        speed: int,
+    ) -> None:
+
+        send = self._send_checked
+
+        x_min, x_max, y_min, y_max, _, _ = self._safe_center()
+
+        if axis == "horizontal":
+
+            if xe >= (x0 + x1) / 2.0:
+                x_a = self._clamp(xe + 5.0, x_min, x_max)
+                x_b = self._clamp(xe + 10.0, x_min, x_max)
+            else:
+                x_a = self._clamp(xe - 5.0, x_min, x_max)
+                x_b = self._clamp(xe - 10.0, x_min, x_max)
+
+            send(f"G0 X{x_a:.3f} Z0 F{speed}")
+            send(f"G0 X{x_b:.3f} F{speed}")
+            send(f"G0 Z3 F{speed}")
+
+        elif axis == "vertical":
+
+            if ye >= (y0 + y1) / 2.0:
+                y_a = self._clamp(ye + 5.0, y_min, y_max)
+                y_b = self._clamp(ye + 10.0, y_min, y_max)
+            else:
+                y_a = self._clamp(ye - 5.0, y_min, y_max)
+                y_b = self._clamp(ye - 10.0, y_min, y_max)
+
+            send(f"G0 Y{y_a:.3f} Z0 F{speed}")
+            send(f"G0 Y{y_b:.3f} F{speed}")
+            send(f"G0 Z3 F{speed}")
+
+
+    def _execute_fiber(
+        self,
+        xs: float,
+        ys: float,
+        xe: float,
+        ye: float,
+        speed: int,
+        zoff: float,
+        is_retracted: bool,
+    ) -> bool:
+
+        send = self._send_checked
+
+        E = self._filament_length_to_extrude(
+            xs,
+            ys,
+            xe,
+            ye,
+        )
+
+        # move to start
+        send(f"G0 X{xs:.3f} Y{ys:.3f} F{speed}")
+
+        # go to print height
+        send(f"G0 Z{zoff:.3f} F{speed}")
+
+        # unretract if needed
+        if is_retracted:
+            send("G11")
+            send("G1 E0.1 F300")
+
+        # extrusion move
+        send(
+            f"G1 X{xe:.3f} "
+            f"Y{ye:.3f} "
+            f"E{E:.3f} "
+            f"F{speed}"
+        )
+
+        # retract
+        send("G10")
+
+        send("M400")
+
+        return True
+
+
+    def _run_pass(
+        self,
+        axis: str,
+        x0: float,
+        x1: float,
+        y0: float,
+        y1: float,
+        status_signal: Signal,
+    ) -> None:
+
+        send = self._send_checked
+
+        is_retracted = False
+        i = 0
+
+        while True:
+
+            pp = self.state.params
+
+            spacing = float(pp.fiber_spacing)
+
+            if spacing <= 0:
+                raise RuntimeError("Fiber spacing must be > 0")
+
+            speed = int(pp.speed)
+            zoff = float(pp.z_offset)
+            clean = bool(pp.clean)
+
+            # ---------------- generate fiber ----------------
+
+            if axis == "horizontal":
+
+                xs, ys, xe, ye = self._horizontal_fiber(
+                    i=i,
+                    x0=x0,
+                    x1=x1,
+                    y0=y0,
+                    spacing=spacing,
+                )
+
+                # stop condition
+                if ys > y1 + 1e-6:
+                    break
+
+            elif axis == "vertical":
+
+                xs, ys, xe, ye = self._vertical_fiber(
+                    i=i,
+                    x0=x0,
+                    y0=y0,
+                    y1=y1,
+                    spacing=spacing,
+                )
+
+                # stop condition
+                if xs > x1 + 1e-6:
+                    break
+
+            else:
+                raise RuntimeError(f"Invalid axis: {axis}")
+
+            # ---------------- execute fiber ----------------
+
+            is_retracted = self._execute_fiber(
+                xs=xs,
+                ys=ys,
+                xe=xe,
+                ye=ye,
+                speed=speed,
+                zoff=zoff,
+                is_retracted=is_retracted,
+            )
+
+            # ---------------- cleaning ----------------
+
+            if clean:
+                self._clean_motion(
+                    axis=axis,
+                    xe=xe,
+                    ye=ye,
+                    x0=x0,
+                    x1=x1,
+                    y0=y0,
+                    y1=y1,
+                    speed=speed,
+                )
+
+            status_signal.emit(
+                f"{axis.capitalize()} fiber {i + 1} completed"
+            )
+
+            i += 1
+
+
+    def _run_custom_centered(
+        self,
+        status_signal: Signal,
+    ) -> None:
+
+        send = self._send_checked
+
+        # ---------------- header ----------------
+
+        send("M220 S100")
+        send("M221 S100")
+
+        send("M207 S1.0 F1500")
+        send("M208 F1500")
+
+        send("G90")
+        send("M83")
+
+        send("G0 Z2 F1500")
+
+        send("G92 E0")
+
+        send(f"M109 S{float(self.state.params.temperature)}")
+
+        # ---------------- active patterns ----------------
+
+        rectangles = self._get_active_rectangles()
+
+        for axis, rect in rectangles:
+
+            x0, x1, y0, y1 = rect
+
+            self._run_pass(
+                axis=axis,
+                x0=x0,
+                x1=x1,
+                y0=y0,
+                y1=y1,
+                status_signal=status_signal,
+            )
+
+        # ---------------- footer ----------------
+
+        send("M300 S440 P200")
+        send("G0 X10 Y190 Z30 F3000")
+
+    # ---------- Misc ----------
+    def movement_test(self) -> None:
+        self.log("Movement test")
+
+    def test_zoffset(self) -> None:
+        self.log("Test Z-Offset")
+        send = self._send_checked
+        send(f"G1 Z{self.state.params.z_offset:.3f} F1000")
