@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (
 
 from backend import AppState, MachineController
 
-
+# ??? REVIEW LATER NEED TO PUT SOME INFORMATION
 INFO_TEXT = (
    ""
-)
+) 
 
 
 def _title_label(text: str) -> QLabel:
@@ -44,13 +44,13 @@ class RectanglePreview(QWidget):
         self.controller = controller
         self.state = state
         self.setMinimumHeight(240)
-        self.state.changed.connect(self.update)
+        self.state.changed.connect(self.update) # This is the reactive redraw system.
 
     def paintEvent(self, event) -> None:
         from PySide6.QtGui import QPainter, QPen, QColor, QBrush
 
         BED_W = 170.0
-        BED_H = 230.0
+        BED_H = 230.0 # REVIEW LATER: SAFE_Y_MAX = 250.0
 
         p = self.state.params
         painter = QPainter(self)
@@ -59,45 +59,50 @@ class RectanglePreview(QWidget):
         margin = 16.0
         avail_w = max(10.0, float(self.width()) - 2 * margin)
         avail_h = max(10.0, float(self.height()) - 2 * margin)
-        side = max(10.0, min(avail_w, avail_h))
+        side = max(10.0, min(avail_w, avail_h)) # the preview want a square ratio, so it chooses the small dimension to guarantee. for example 
+        # avail_w = 600
+        # avail_h = 300
+        # side will be 300
+        # the preview becomes 300x300
 
-        ox = (float(self.width()) - side) / 2.0
-        oy = (float(self.height()) - side) / 2.0
+        ox = (float(self.width()) - side) / 2.0  # centers the viewport vertically
+        oy = (float(self.height()) - side) / 2.0 # center the viewport horzintally
+ 
+        def mx(x_mm: float) -> float:  # converts mm -> pixel
+            return ox + (x_mm / BED_W) * side # simple rule of three or linear mapping or coordinate transformation
 
-        def mx(x_mm: float) -> float:
-            return ox + (x_mm / BED_W) * side
-
-        def my(y_mm: float) -> float:
+        def my(y_mm: float) -> float: # converts mm -> pixel
             return oy + side - (y_mm / BED_H) * side
 
         # Bed outline
         painter.setPen(QPen(QColor(200, 200, 200), 2))
         painter.setBrush(QBrush(Qt.NoBrush))
-        #painter.drawRect(ox, oy, side, side)
+        # painter.drawRect(ox, oy, side, side) 
+        # this line is disable because the bed outline is almost the same as the safer one and the safe-area rectangle is being drawn almost exactly on top of if. To see, you can enable this line and put the colot to QColor(255, 0, 0) - red - and you will see. 
 
-        # Usable area outline
+        # Usable and safe area outline
         sx0 = float(p.safe_x_min)
         sx1 = float(p.safe_x_max)
         sy0 = float(p.safe_y_min)
         sy1 = float(p.safe_y_max)
 
-        painter.setPen(QPen(QColor(120, 180, 255), 2))
+        painter.setPen(QPen(QColor(120, 180, 255), 2)) # sets de blue border
         painter.setBrush(QBrush(Qt.NoBrush))
         rx = mx(sx0)
         ry = my(sy1) + 20
         rw = mx(sx1) - mx(sx0)
-        rh = my(sy0) - my(sy1)
-        painter.drawRect(rx, ry, rw, rh)
-        painter.drawRect(rx + 65, ry + 65, 80 , 80)  
+        rh = my(sy0) - my(sy1) # its alright cause the function my has a oy + side (FOR WHAT??? WHO KNOWS??)
+        painter.drawRect(rx, ry, rw, rh) # draws the biggest blue rectangles
+        painter.drawRect(rx + 65, ry + 65, 80 , 80)   # draws the intern blue rectangle
 
         # Requested rectangle
         orient = str(p.fiber_orientation)
         L = float(p.fiber_length)
         Wd = float(p.fiber_width)
         sx = float(p.start_x)
-        sy = float(p.start_y + 20)
+        sy = float(p.start_y + 20) # REVIEW LATER: duplicated Y-offset compensation?? already has one on backend.py
 
-        if orient == "Horizontal":
+        if orient == "Horizontal": # REVIEW LATER: consider both ways logical
             x0, x1 = sx, sx + L
             y0, y1 = sy, sy + Wd
         else:
@@ -117,7 +122,7 @@ class RectanglePreview(QWidget):
         rry = my(y1)
         rrw = mx(x1) - mx(x0)
         rrh = my(y0) - my(y1)
-        painter.drawRect(rrx, rry, rrw, rrh)
+        painter.drawRect(rrx, rry, rrw, rrh) # dras the green rectangle
 
 
 
