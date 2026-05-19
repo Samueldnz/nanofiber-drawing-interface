@@ -110,10 +110,10 @@ class RectanglePreview(QWidget):
             y0, y1 = sy, sy + L
 
         try:
-            _ = self.controller.get_draw_rectangle()
+            _ = self.controller.get_draw_rectangle() # REVIEW LATER: already has function in backend.py that build this logic
             valid = True
         except Exception:
-            valid = False
+            valid = False 
 
         painter.setPen(QPen(QColor(30, 30, 30), 2))
         painter.setBrush(QBrush(QColor(0, 180, 0, 110) if valid else QColor(200, 0, 0, 110)))
@@ -123,7 +123,6 @@ class RectanglePreview(QWidget):
         rrw = mx(x1) - mx(x0)
         rrh = my(y0) - my(y1)
         painter.drawRect(rrx, rry, rrw, rrh) # dras the green rectangle
-
 
 
 
@@ -137,19 +136,25 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(QSize(980, 780))
 
         root = QWidget()
-        root_layout = QHBoxLayout(root)
-        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout = QHBoxLayout(root)  # creates a horizontal layout attached to root
+        root_layout.setContentsMargins(0, 0, 0, 0) # removes internal padding
         self.setCentralWidget(root)
 
         self.sidebar = QListWidget()
         self.sidebar.setFixedWidth(190)
-        self.sidebar.setFrameShape(QFrame.NoFrame)
+        self.sidebar.setFrameShape(QFrame.NoFrame) # removes the default border/frame. Makes clean UI
         self.sidebar.setSpacing(2)
 
-        self.stack = QStackedWidget()
+        self.stack = QStackedWidget() # multiple pages stacked on top of each other like a deck of cards, but just one is visible (the left part of the window)
 
         root_layout.addWidget(self.sidebar)
         root_layout.addWidget(self.stack, 1)
+
+        # MainWindow
+        # └── root QWidget
+        #     └── QHBoxLayout
+        #         ├── QListWidget (sidebar)
+        #         └── QStackedWidget (pages)
 
         self.page_welcome = WelcomePage(self)
         self.page_draw = DrawPage(self)
@@ -165,6 +170,8 @@ class MainWindow(QMainWindow):
         self._add_page("Connection", self.page_connection)
         #self._add_page("Log", self.page_log)
 
+        # "When sidebar row changes,
+        # call stack.setCurrentIndex(...)"
         self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
 
         self._set_project_mode(False)
@@ -177,6 +184,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(widget)
         self.sidebar.addItem(QListWidgetItem(title))
 
+    # enables/disables sidebar pages
     def _set_project_mode(self, enabled: bool) -> None:
         for i in range(1, self.sidebar.count()):
             item = self.sidebar.item(i)
@@ -185,6 +193,7 @@ class MainWindow(QMainWindow):
     def go(self, name: str) -> None:
         mapping = {"Welcome": 0, "Draw": 1, "Syringe": 2, "Summary": 3, "Connection": 4, "Log": 5}
         self.sidebar.setCurrentRow(mapping[name])
+        # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
 
     def start_new_project(self) -> None:
         self._set_project_mode(True)
