@@ -397,6 +397,15 @@ class DrawPage(QWidget):
         self.btn_test_z = QPushButton("Test Z-Offset")
         self.btn_test_z.clicked.connect(self.controller.test_zoffset)
 
+        # addWidget(widget, row, column, rowSpan, columnSpan)
+        # | Parameter    | Meaning                              |
+        # | ------------ | ------------------------------------ |
+        # | `widget`     | widget to insert                     |
+        # | `row`        | grid row                             |
+        # | `column`     | grid column                          |
+        # | `rowSpan`    | how many rows the widget occupies    |
+        # | `columnSpan` | how many columns the widget occupies |
+
         common_grid.addWidget(QLabel("Speed"), 0, 0)
         common_grid.addWidget(self.speed, 0, 1, 1, 2)
         common_grid.addWidget(self.speed_label, 0, 3)
@@ -416,13 +425,17 @@ class DrawPage(QWidget):
 
         # navigation
         nav = QHBoxLayout()
-        nav.addStretch(1)
-        self.btn_next = QPushButton("Next →")
+        nav.addStretch(1) # consume the avaible space first
+        self.btn_next = QPushButton("Next →") # and then the button is placed, on the right side
         self.btn_next.clicked.connect(lambda: self.mw.go("Syringe"))
         nav.addWidget(self.btn_next)
         outer.addLayout(nav)
 
+        # "Whenever state changes,
+        # refresh the UI."
         self.state.changed.connect(self._sync_from_state)
+
+        # initial UI population
         self._sync_from_state()
 
     @Slot()
