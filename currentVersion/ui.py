@@ -244,9 +244,9 @@ class WelcomePage(QWidget):
         super().__init__()
         self.mw = mw
 
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self) # vertical layout (QV: vertical)
         layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(16)
+        layout.setSpacing(16) # 16px of spacing between child elements
 
         title = QLabel("MicroFiber Machine Interface")
         f = QFont()
@@ -255,7 +255,7 @@ class WelcomePage(QWidget):
         title.setFont(f)
         title.setAlignment(Qt.AlignCenter)
 
-        btn_row = QHBoxLayout()
+        btn_row = QHBoxLayout() # horizontal layout (QH: horizontal)
         self.btn_new = QPushButton("New")
         self.btn_load = QPushButton("Load")
         self.btn_info = QPushButton("Info")
@@ -269,7 +269,7 @@ class WelcomePage(QWidget):
 
         layout.addWidget(title)
         layout.addLayout(btn_row)
-        layout.addWidget(self.btn_info, 0, Qt.AlignCenter)
+        layout.addWidget(self.btn_info, 0, Qt.AlignCenter) # 0 means: no expansion priority 
 
         self.btn_new.clicked.connect(self.mw.start_new_project)
         self.btn_load.clicked.connect(self.mw.load_project_dialog)
