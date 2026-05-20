@@ -484,7 +484,7 @@ class SyringePage(QWidget):
         self.state = mw.state
         self.controller = mw.controller
 
-        outer = QVBoxLayout(self)
+        outer = QVBoxLayout(self) # vertical layout
         outer.setContentsMargins(18, 14, 18, 14)
         outer.setSpacing(10)
 
@@ -523,12 +523,12 @@ class SyringePage(QWidget):
         f = QFont(); f.setPointSize(14)
         self.lbl_current.setFont(f)
         cur_row.addWidget(self.lbl_current, 0, Qt.AlignLeft)
-        cur_row.addStretch(1)
+        cur_row.addStretch(1) # inserts expandable empty space AFTER the labels.
         outer.addLayout(cur_row)
 
         intake_row = QHBoxLayout()
         intake_row.addWidget(QLabel("Droplet size to intake"), 0, Qt.AlignLeft)
-        self.spin_droplet = QSpinBox()
+        self.spin_droplet = QSpinBox() # integer numbers, QDoubleSpin = double numbers
         self.spin_droplet.setRange(0, 10000)
         self.spin_droplet.valueChanged.connect(lambda v: self.state.set_param("syringe_droplet_units", int(v)))
         intake_row.addWidget(self.spin_droplet, 0, Qt.AlignLeft)
@@ -705,8 +705,6 @@ class ConnectionPage(QWidget):
         conn_row.addWidget(self.btn_connect)
         conn_row.addWidget(self.btn_disconnect)
         conn_row.addWidget(self.lbl_state, 1)
-        
-     
         
         outer.addLayout(conn_row)
         
