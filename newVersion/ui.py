@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QStackedWidget, QMessageBox, QFileDialog,
     QComboBox, QSlider, QDoubleSpinBox, QGroupBox, QGridLayout,
-    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox
+    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect
 )
 
 from PySide6.QtCore import QUrl
@@ -27,28 +27,238 @@ from PySide6.QtMultimedia import (
     QMediaPlayer,
 )
 
+BG_PRIMARY = "#0F172A"
+BG_SECONDARY = "#1E293B"
+
+PRIMARY_BLUE = "#2563EB"
+ENERGON_RED = "#DC2626"
+CYBERTRON_CYAN = "#06B6D4"
+
+TEXT_PRIMARY = "#F8FAFC"
+TEXT_SECONDARY = "#94A3B8"
+
+SUCCESS_GREEN = "#22C55E"
+
+def _primary_button(text: str) -> QPushButton:
+    """
+    Main action button.
+    Used for:
+    - Start
+    - Next
+    - Connect
+    """
+
+    btn = QPushButton(text)
+
+    font = QFont("Inter")
+    font.setPointSize(11)
+    font.setBold(True)
+
+    btn.setFont(font)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setMinimumHeight(44)
+
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {PRIMARY_BLUE};
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 18px;
+        }}
+
+        QPushButton:hover {{
+            background-color: #3B82F6;
+        }}
+
+        QPushButton:pressed {{
+            background-color: #1D4ED8;
+        }}
+    """)
+
+    return btn
+
+def _secondary_button(text: str) -> QPushButton:
+    """
+    Secondary industrial button.
+    Used for:
+    - Load
+    - Export
+    - Info
+    """
+
+    btn = QPushButton(text)
+
+    font = QFont("Inter")
+    font.setPointSize(10)
+    font.setBold(True)
+
+    btn.setFont(font)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setMinimumHeight(42)
+
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {BG_SECONDARY};
+            color: {TEXT_PRIMARY};
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 10px 18px;
+        }}
+
+        QPushButton:hover {{
+            border: 1px solid {PRIMARY_BLUE};
+            background-color: #273549;
+        }}
+
+        QPushButton:pressed {{
+            background-color: #111827;
+        }}
+    """)
+
+    return btn
+
+def _danger_button(text: str) -> QPushButton:
+    """
+    Critical action button.
+    Used for:
+    - Emergency stop
+    - Disconnect
+    - Reset
+    """
+
+    btn = QPushButton(text)
+
+    font = QFont("Inter")
+    font.setPointSize(10)
+    font.setBold(True)
+
+    btn.setFont(font)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setMinimumHeight(42)
+
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {ENERGON_RED};
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 18px;
+        }}
+
+        QPushButton:hover {{
+            background-color: #EF4444;
+        }}
+
+        QPushButton:pressed {{
+            background-color: #B91C1C;
+        }}
+    """)
+
+    return btn
+
+# =========================================================
+# TYPOGRAPHY HELPERS
+# =========================================================
+
+def _title_label(text: str) -> QLabel:
+    """
+    Main hero/page title.
+
+    Used for:
+    - application branding
+    - main page headers
+    - cinematic launcher titles
+    """
+
+    lbl = QLabel(text)
+
+    font = QFont("Orbitron")
+    font.setPointSize(24)
+    font.setBold(True)
+
+    lbl.setFont(font)
+
+    lbl.setWordWrap(True)
+
+    lbl.setStyleSheet(f"""
+        QLabel {{
+            color: {TEXT_PRIMARY};
+            background: transparent;
+            letter-spacing: 2px;
+            padding-bottom: 4px;
+        }}
+    """)
+
+    return lbl
+
+
+def _section_label(text: str) -> QLabel:
+    """
+    Secondary hierarchy label.
+
+    Used for:
+    - section headers
+    - subtitles
+    - grouped parameter titles
+    """
+
+    lbl = QLabel(text)
+
+    font = QFont("Inter")
+    font.setPointSize(16)
+    font.setBold(True)
+
+    lbl.setFont(font)
+
+    lbl.setWordWrap(True)
+
+    lbl.setStyleSheet(f"""
+        QLabel {{
+            color: {CYBERTRON_CYAN};
+            background: transparent;
+            padding-bottom: 2px;
+        }}
+    """)
+
+    return lbl
+
+
+def _subtle_label(text: str) -> QLabel:
+    """
+    Descriptive/support text.
+
+    Used for:
+    - helper descriptions
+    - subtitles
+    - contextual information
+    """
+
+    lbl = QLabel(text)
+
+    font = QFont("Inter")
+    font.setPointSize(10)
+    font.setBold(False)
+
+    lbl.setFont(font)
+
+    lbl.setWordWrap(True)
+
+    lbl.setStyleSheet(f"""
+        QLabel {{
+            color: {TEXT_SECONDARY};
+            background: transparent;
+            line-height: 1.5;
+        }}
+    """)
+
+    return lbl
+
 from backend import AppState, MachineController
 
 INFO_TEXT = (
    "Optimus Prime - Microfiber Fabrication System v3.0 - Develop by Samuel Sampaio Diniz"
 )
-
-def _title_label(text: str) -> QLabel:
-    lbl = QLabel(text)
-    f = QFont()
-    f.setPointSize(20)
-    f.setBold(True)
-    lbl.setFont(f)
-    return lbl
-
-def _subtle_label(text: str) -> QLabel:
-    lbl = QLabel(text)
-    f = QFont()
-    f.setPointSize(10)
-    f.setBold(False)
-    lbl.setFont(f)
-    lbl.setStyleSheet("color: #666;")
-    return lbl
 
 
 class RectanglePreview(QWidget):
@@ -188,22 +398,22 @@ class MainWindow(QMainWindow):
         #         └── QStackedWidget (pages)
 
         self.page_welcome = WelcomePage(self)
-        self.page_draw = DrawPage(self)
-        self.page_summary = SummaryPage(self)
-        self.page_connection = ConnectionPage(self)
+        # self.page_draw = DrawPage(self)
+        # self.page_summary = SummaryPage(self)
+        # self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
-        self._add_page("Draw", self.page_draw)
-        self._add_page("Summary", self.page_summary)
-        self._add_page("Connection", self.page_connection)
+        # self._add_page("Draw", self.page_draw)
+        # self._add_page("Summary", self.page_summary)
+        # self._add_page("Connection", self.page_connection)
 
-        self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
+        # self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
 
-        self._set_project_mode(False)
-        self.sidebar.setCurrentRow(0)
+        # self._set_project_mode(False)
+        # self.sidebar.setCurrentRow(0)
 
-        self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
-        self.state.log.connect(self.page_connection.append_log)
+        # self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
+        # self.state.log.connect(self.page_connection.append_log)
 
     def _add_page(self, title: str, widget: QWidget) -> None:
         self.stack.addWidget(widget)
@@ -262,7 +472,7 @@ class MainWindow(QMainWindow):
 
     def show_info(self) -> None:
         self.player.stop()
-        self.player.setPosition(42000)
+        self.player.setPosition(107000)
         self.player.play()
 
         msg = QMessageBox(self)
@@ -293,6 +503,147 @@ class MainWindow(QMainWindow):
         msg.exec()
 
         self.player.stop()
+
+class WelcomePage(QWidget):
+    def __init__(self, mw: MainWindow) -> None:
+        super().__init__()
+        self.mw = mw
+
+        self.bg = QPixmap(
+            "assets/optimus_bg.jpeg"
+        )
+
+        root = QVBoxLayout(self)
+
+        root.setContentsMargins(40, 40, 40, 40)
+
+        # top spacer
+        root.addStretch()
+
+
+        hero = QFrame()
+
+        hero.setMaximumWidth(720)
+
+        hero.setStyleSheet(f"""
+            QFrame {{
+                background-color: rgba(15, 23, 42, 170);
+            }}
+        """)
+
+        hero_layout = QVBoxLayout(hero)
+
+        hero_layout.setContentsMargins(50, 50, 50, 50)
+
+        hero_layout.setSpacing(24)
+
+
+        title = _title_label("OPTIMUS PRIME")
+
+        title.setAlignment(Qt.AlignCenter)
+
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: white;
+                background: transparent;
+                letter-spacing: 4px;
+            }}
+        """)
+
+        subtitle = _section_label(
+            "MicroFiber Machine Interface"
+        )
+
+        subtitle.setAlignment(Qt.AlignCenter)
+
+        desc = _subtle_label(
+            "Advanced industrial robotics interface "
+            "for precision nanofiber fabrication "
+            "and machine control."
+        )
+
+        desc.setAlignment(Qt.AlignCenter)
+
+        desc.setMaximumWidth(520)
+
+        btn_row = QHBoxLayout()
+
+        btn_row.setSpacing(18)
+
+        self.btn_new = _primary_button("New")
+        self.btn_load = _secondary_button("Load")
+        self.btn_info = _secondary_button("Info")
+
+        self.btn_new.setFixedSize(180, 48)
+        self.btn_load.setFixedSize(180, 48)
+        self.btn_info.setFixedSize(120, 42)
+
+        btn_row.addWidget(self.btn_new)
+        btn_row.addWidget(self.btn_load)
+
+        hero_layout.addWidget(title)
+        hero_layout.addWidget(subtitle)
+        hero_layout.addWidget(desc)
+
+        hero_layout.addSpacing(12)
+
+        hero_layout.addLayout(btn_row)
+
+        hero_layout.addWidget(
+            self.btn_info,
+            0,
+            Qt.AlignCenter,
+        )
+
+        # center panel
+        root.addWidget(
+            hero,
+            0,
+            Qt.AlignCenter,
+        )
+
+        # bottom spacer
+        root.addStretch()
+        self.btn_new.clicked.connect(self.mw.start_new_project)
+        self.btn_load.clicked.connect(self.mw.load_project_dialog)
+        self.btn_info.clicked.connect(self.mw.show_info)
+
+    def paintEvent(self, event):
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.SmoothPixmapTransform
+        )
+
+        scaled = self.bg.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        x = (self.width() - scaled.width()) / 2
+        y = (self.height() - scaled.height()) / 2
+
+        painter.drawPixmap(
+            int(x),
+            int(y),
+            scaled,
+        )
+
+        # dark overlay
+        painter.fillRect(
+            self.rect(),
+            QColor(0, 0, 0, 170),
+        )
+
+        # allow Qt to paint child widgets/layouts correctly
+        super().paintEvent(event)
+
+
+
+
+
 
 
 
