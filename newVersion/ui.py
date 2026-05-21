@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import Qt, QSize, Slot
-from PySide6.QtGui import QFont, QPainter, QPen, QColor, QBrush
+from PySide6.QtGui import (
+    QFont,
+    QColor,
+    QPainter,
+    QLinearGradient,
+    QPen,
+    QBrush,
+    QPixmap,
+    QIcon,
+)
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QStackedWidget, QMessageBox, QFileDialog,
@@ -9,10 +20,17 @@ from PySide6.QtWidgets import (
     QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox
 )
 
+from PySide6.QtCore import QUrl
+
+from PySide6.QtMultimedia import (
+    QAudioOutput,
+    QMediaPlayer,
+)
+
 from backend import AppState, MachineController
 
 INFO_TEXT = (
-   "Optimus Prime - Nanofiber Fabrication System v3.0 - Develop by Samuel Sampaio Diniz"
+   "Optimus Prime - Microfiber Fabrication System v3.0 - Develop by Samuel Sampaio Diniz"
 )
 
 def _title_label(text: str) -> QLabel:
@@ -114,6 +132,174 @@ class RectanglePreview(QWidget):
             rrh = my(y0) - my(y1)
             painter.drawRect(rrx, rry, rrw, rrh)
  
+
+class MainWindow(QMainWindow):
+    def __init__(self, state: AppState, controller: MachineController) -> None:
+        super().__init__()
+        self.state = state
+        self.controller = controller
+
+        self.audio_output = QAudioOutput()
+        self.player = QMediaPlayer()
+
+        self.player.setAudioOutput(self.audio_output)
+
+        # optional volume
+        self.audio_output.setVolume(0.5)
+
+        # load music file
+        music_path = os.path.abspath("assets/info_music.mp3")
+
+        self.player.setSource(
+            QUrl.fromLocalFile(music_path)
+        )
+
+        self.player.pause()
+
+        self.setWindowTitle("Optimus Prime - Microfiber Machine Interface v3.0")
+        self.setMinimumSize(QSize(980, 780))
+
+        root = QWidget()
+        
+        # QHBoxLayout = horizontal
+        root_layout = QHBoxLayout(root) 
+
+        # remove padding and margin
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        self.setCentralWidget(root)
+
+        self.sidebar = QListWidget()
+        self.sidebar.setFixedWidth(190)
+
+        # remove default border
+        self.sidebar.setFrameShape(QFrame.NoFrame) 
+        self.sidebar.setSpacing(2)
+
+        # multiple pages stacked on top of each other
+        self.stack = QStackedWidget()
+
+        root_layout.addWidget(self.sidebar)
+        root_layout.addWidget(self.stack, 1)
+        
+        # MainWindow
+        # └── root QWidget
+        #     └── QHBoxLayout
+        #         ├── QListWidget (sidebar)
+        #         └── QStackedWidget (pages)
+
+        self.page_welcome = WelcomePage(self)
+        self.page_draw = DrawPage(self)
+        self.page_summary = SummaryPage(self)
+        self.page_connection = ConnectionPage(self)
+        
+        self._add_page("Welcome", self.page_welcome)
+        self._add_page("Draw", self.page_draw)
+        self._add_page("Summary", self.page_summary)
+        self._add_page("Connection", self.page_connection)
+
+        self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
+
+        self._set_project_mode(False)
+        self.sidebar.setCurrentRow(0)
+
+        self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
+        self.state.log.connect(self.page_connection.append_log)
+
+    def _add_page(self, title: str, widget: QWidget) -> None:
+        self.stack.addWidget(widget)
+        self.sidebar.addItem(QListWidgetItem(title))
+
+    # enables/disables sidebar pages
+    def _set_project_mode(self, enabled: bool) -> None:
+        for i in range(1, self.sidebar.count()):
+            item = self.sidebar.item(i)
+            item.setFlags(item.flags() | Qt.ItemIsEnabled if enabled else item.flags() & ~Qt.ItemIsEnabled)
+
+    def go(self, name: str) -> None:
+        mapping = {"Welcome": 0, "Draw": 1, "Syringe": 2, "Summary": 3, "Connection": 4, "Log": 5}
+        self.sidebar.setCurrentRow(mapping[name])
+        # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
+
+    def start_new_project(self) -> None:
+        self._set_project_mode(True)
+        self.setWindowTitle("Nanofiber Machine - New Project")
+        self.go("Draw")
+        self.controller.log("New project")
+    
+    def load_project_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Load Project", "", "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            self.controller.load_project(path)
+            self._set_project_mode(True)
+            self.setWindowTitle(f"Nanofiber Machine - {path.split('/')[-1]}")
+            self.go("Draw")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not load project:\n{e}")
+
+    def save_project_dialog(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Save Project", "", "JSON files (*.json)")
+        if not path:
+            return
+        if not path.lower().endswith(".json"):
+            path += ".json"
+        try:
+            self.controller.save_project(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save project:\n{e}")
+
+    def save_pdf_dialog(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Save PDF", "", "PDF files (*.pdf)")
+        if not path:
+            return
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
+        try:
+            self.controller.save_pdf(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
+
+    def show_info(self) -> None:
+        self.player.stop()
+        self.player.setPosition(42000)
+        self.player.play()
+
+        msg = QMessageBox(self)
+
+        msg.setWindowTitle("Optimus Prime")
+        msg.setText(INFO_TEXT)
+
+        # remove default info icon
+        msg.setIcon(QMessageBox.NoIcon)
+
+        icon_path = os.path.abspath("assets/optimus_icon.png")
+
+        # custom window icon
+        msg.setWindowIcon(
+            QIcon(icon_path)
+        )
+
+        # custom content icon
+        msg.setIconPixmap(
+            QPixmap(icon_path).scaled(
+                96,
+                96,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+        msg.exec()
+
+        self.player.stop()
+
+
+
+    
+
+        
+
 
 
 
