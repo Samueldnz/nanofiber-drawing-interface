@@ -369,6 +369,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Optimus Prime - Microfiber Machine Interface v3.0")
         self.setMinimumSize(QSize(980, 780))
 
+        icon_path = os.path.abspath(
+            "assets/optimus_icon.ico"
+        )
+
+        self.setWindowIcon(
+            QIcon(icon_path)
+        )
+
         root = QWidget()
         
         # QHBoxLayout = horizontal
@@ -376,19 +384,150 @@ class MainWindow(QMainWindow):
 
         # remove padding and margin
         root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
         self.setCentralWidget(root)
 
+        sidebar_container = QWidget()
+        
+
+        sidebar_container.setStyleSheet(f"""
+            background-color: {BG_PRIMARY};
+        """)
+
+        separator = QFrame()
+
+        separator.setFixedWidth(2)
+
+        separator.setStyleSheet(f"""
+            background-color: rgba(220, 38, 38, 180);
+        """)
+
+        sidebar_layout = QVBoxLayout(sidebar_container)
+
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+
+        sidebar_header = QWidget()
+
+        sidebar_header.setStyleSheet(f"""
+            QWidget {{
+                background-color: {BG_SECONDARY};
+            }}
+        """)
+
+        header_layout = QHBoxLayout(sidebar_header)
+
+        header_layout.setContentsMargins(20, 24, 20, 24)
+        header_layout.setAlignment(Qt.AlignVCenter)
+
+        header_layout.setSpacing(14)
+
+        logo = QLabel()
+
+        pix = QPixmap("assets/optimus_icon.ico")
+
+        logo.setPixmap(
+            pix.scaled(
+                42,
+                42,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+        logo.setFixedSize(42, 42)
+
+        text_container = QWidget()
+
+        text_layout = QVBoxLayout(text_container)
+
+        text_layout.setContentsMargins(0, 0, 0, 0)
+
+        text_layout.setSpacing(2)
+
+        brand_title = QLabel("OPTIMUS PRIME")
+
+        brand_subtitle = QLabel(
+            "Industrial Control"
+        )
+
+        brand_subtitle.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_SECONDARY};
+                font-size: 11px;
+                font-weight: 500;
+            }}
+        """)
+
+        brand_title.setStyleSheet(f"""
+            QLabel {{
+                color: white;
+                font-size: 18px;
+                font-weight: 800;
+                letter-spacing: 2px;
+            }}
+        """)
+
+        text_layout.addWidget(brand_title)
+        text_layout.addWidget(brand_subtitle)
+
+        header_layout.addWidget(logo)
+        header_layout.addWidget(text_container)
+        
+
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(190)
+        self.sidebar.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {BG_PRIMARY};
+                border: none;
+                padding-top: 24px;
+                padding-left: 10px;
+                padding-right: 10px;
+                outline: 0;
+            }}
+
+            QListWidget::item {{
+                background-color: transparent;
+                color: {TEXT_SECONDARY};
+                border-radius: 12px;
+                padding: 14px 22px;
+                margin-bottom: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                margin-left: 6px;
+                margin-right: 6px;
+            }}
+
+            QListWidget::item:selected {{
+                background-color: rgba(37, 99, 235, 60);
+                border-left: 4px solid #2563EB;
+                color: white;
+            }}
+
+            QListWidget::item:hover {{
+                background-color: rgba(37, 99, 235, 80);
+                color: white;
+            }}
+        """)
+
+        self.sidebar.setFixedWidth(240)
+        sidebar_font = QFont("Inter")
+        sidebar_font.setPointSize(11)
+        sidebar_font.setBold(False)
+        self.sidebar.setFont(sidebar_font)
 
         # remove default border
         self.sidebar.setFrameShape(QFrame.NoFrame) 
-        self.sidebar.setSpacing(2)
+        self.sidebar.setSpacing(6)
 
         # multiple pages stacked on top of each other
         self.stack = QStackedWidget()
 
-        root_layout.addWidget(self.sidebar)
+        sidebar_layout.addWidget(sidebar_header)
+        sidebar_layout.addWidget(self.sidebar)
+        root_layout.addWidget(sidebar_container)
+        root_layout.addWidget(separator)
         root_layout.addWidget(self.stack, 1)
         
         # MainWindow
@@ -407,17 +546,25 @@ class MainWindow(QMainWindow):
         # self._add_page("Summary", self.page_summary)
         # self._add_page("Connection", self.page_connection)
 
-        # self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
 
-        # self._set_project_mode(False)
-        # self.sidebar.setCurrentRow(0)
+        self._set_project_mode(False)
+        self.sidebar.setCurrentRow(0)
 
         # self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
         # self.state.log.connect(self.page_connection.append_log)
 
-    def _add_page(self, title: str, widget: QWidget) -> None:
+    def _add_page(
+            self, 
+            title: str, 
+            widget: QWidget,
+            icon: QIcon | None = None,) -> None:
         self.stack.addWidget(widget)
-        self.sidebar.addItem(QListWidgetItem(title))
+        item = QListWidgetItem(title)
+
+        if icon is not None:
+            item.setIcon(icon)
+        self.sidebar.addItem(item)
 
     # enables/disables sidebar pages
     def _set_project_mode(self, enabled: bool) -> None:
@@ -483,7 +630,7 @@ class MainWindow(QMainWindow):
         # remove default info icon
         msg.setIcon(QMessageBox.NoIcon)
 
-        icon_path = os.path.abspath("assets/optimus_icon.png")
+        icon_path = os.path.abspath("assets/optimus_icon.ico")
 
         # custom window icon
         msg.setWindowIcon(
