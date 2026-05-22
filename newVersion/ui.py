@@ -32,7 +32,7 @@ BG_SECONDARY = "#1E293B"
 
 PRIMARY_BLUE = "#2563EB"
 ENERGON_RED = "#DC2626"
-CYBERTRON_CYAN = "#06B6D4"
+CYBERTRON_CYAN = "#38BDF8"
 
 TEXT_PRIMARY = "#F8FAFC"
 TEXT_SECONDARY = "#94A3B8"
@@ -187,6 +187,7 @@ def _title_label(text: str) -> QLabel:
             background: transparent;
             letter-spacing: 2px;
             padding-bottom: 4px;
+            border: none;
         }}
     """)
 
@@ -218,6 +219,7 @@ def _section_label(text: str) -> QLabel:
             color: {CYBERTRON_CYAN};
             background: transparent;
             padding-bottom: 2px;
+            border: none;
         }}
     """)
 
@@ -249,6 +251,7 @@ def _subtle_label(text: str) -> QLabel:
             color: {TEXT_SECONDARY};
             background: transparent;
             line-height: 1.5;
+            border: none;
         }}
     """)
 
@@ -256,9 +259,43 @@ def _subtle_label(text: str) -> QLabel:
 
 from backend import AppState, MachineController
 
-INFO_TEXT = (
-   "Optimus Prime - Microfiber Fabrication System v3.0 - Develop by Samuel Sampaio Diniz"
-)
+INFO_TEXT = """
+<p>
+Greetings, operator.
+</p>
+
+<p>
+I am Optimus Prime, autonomous command interface
+for advanced microfiber fabrication and industrial
+precision control.
+</p>
+
+<p>
+This system was engineered to coordinate machine
+operations, fiber generation, motion control,
+and fabrication workflows with precision,
+reliability, and discipline.
+</p>
+
+<p>
+Every parameter configured and every trajectory
+executed represents the convergence of engineering,
+innovation, and purpose.
+</p>
+
+<p style="margin-top:12px; color:#60A5FA;">
+<i>
+"There are mysteries to the universe we were never meant to solve. But who we are, and why we are here, are not among them. Those answers, we carry inside us."
+</i>
+<br>
+— Optimus Prime
+</p>
+
+<p style="font-size:10px; color:#64748B;">
+Developed by Samuel Sampaio Diniz<br>
+under the supervision of Dr. Andrew Shyrakenko.
+</p>
+"""
 
 
 class RectanglePreview(QWidget):
@@ -391,7 +428,7 @@ class MainWindow(QMainWindow):
         
 
         sidebar_container.setStyleSheet(f"""
-            background-color: {BG_PRIMARY};
+            background-color: #F8FAFC;
         """)
 
         separator = QFrame()
@@ -399,7 +436,7 @@ class MainWindow(QMainWindow):
         separator.setFixedWidth(2)
 
         separator.setStyleSheet(f"""
-            background-color: rgba(220, 38, 38, 180);
+            background-color: rgba(148, 163, 184, 90);
         """)
 
         sidebar_layout = QVBoxLayout(sidebar_container)
@@ -412,7 +449,7 @@ class MainWindow(QMainWindow):
 
         sidebar_header.setStyleSheet(f"""
             QWidget {{
-                background-color: {BG_SECONDARY};
+                background-color: #E2E8F0;
             }}
         """)
 
@@ -454,7 +491,7 @@ class MainWindow(QMainWindow):
 
         brand_subtitle.setStyleSheet(f"""
             QLabel {{
-                color: {TEXT_SECONDARY};
+                color: #475569;
                 font-size: 11px;
                 font-weight: 500;
             }}
@@ -462,7 +499,7 @@ class MainWindow(QMainWindow):
 
         brand_title.setStyleSheet(f"""
             QLabel {{
-                color: white;
+                color: #0F172A;
                 font-size: 18px;
                 font-weight: 800;
                 letter-spacing: 2px;
@@ -479,7 +516,7 @@ class MainWindow(QMainWindow):
         self.sidebar = QListWidget()
         self.sidebar.setStyleSheet(f"""
             QListWidget {{
-                background-color: {BG_PRIMARY};
+                background-color: #F8FAFC;
                 border: none;
                 padding-top: 24px;
                 padding-left: 10px;
@@ -489,7 +526,7 @@ class MainWindow(QMainWindow):
 
             QListWidget::item {{
                 background-color: transparent;
-                color: {TEXT_SECONDARY};
+                color: #0F172A;
                 border-radius: 12px;
                 padding: 14px 22px;
                 margin-bottom: 8px;
@@ -500,14 +537,14 @@ class MainWindow(QMainWindow):
             }}
 
             QListWidget::item:selected {{
-                background-color: rgba(37, 99, 235, 60);
+                background-color: #DBEAFE;
+                color: #0F172A;
                 border-left: 4px solid #2563EB;
-                color: white;
             }}
 
             QListWidget::item:hover {{
-                background-color: rgba(37, 99, 235, 80);
-                color: white;
+                background-color: #E2E8F0;
+                color: #0F172A;
             }}
         """)
 
@@ -667,16 +704,25 @@ class WelcomePage(QWidget):
         # top spacer
         root.addStretch()
 
-
         hero = QFrame()
 
         hero.setMaximumWidth(720)
 
         hero.setStyleSheet(f"""
             QFrame {{
-                background-color: rgba(15, 23, 42, 170);
+                background-color: rgba(15, 23, 42, 205);
+                border: 1px solid rgba(255,255,255,20);
+                border-radius: 24px;
             }}
         """)
+
+        shadow = QGraphicsDropShadowEffect()
+
+        shadow.setBlurRadius(40)
+        shadow.setOffset(0, 10)
+        shadow.setColor(QColor(0, 0, 0, 180))
+
+        hero.setGraphicsEffect(shadow)
 
         hero_layout = QVBoxLayout(hero)
 
@@ -694,6 +740,7 @@ class WelcomePage(QWidget):
                 color: white;
                 background: transparent;
                 letter-spacing: 4px;
+                border: none;
             }}
         """)
 
@@ -704,8 +751,8 @@ class WelcomePage(QWidget):
         subtitle.setAlignment(Qt.AlignCenter)
 
         desc = _subtle_label(
-            "Advanced industrial robotics interface "
-            "for precision nanofiber fabrication "
+            "Advanced robotics interface "
+            "for precision microfiber fabrication "
             "and machine control."
         )
 
@@ -776,12 +823,6 @@ class WelcomePage(QWidget):
             int(x),
             int(y),
             scaled,
-        )
-
-        # dark overlay
-        painter.fillRect(
-            self.rect(),
-            QColor(0, 0, 0, 170),
         )
 
         # allow Qt to paint child widgets/layouts correctly
