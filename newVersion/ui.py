@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, QSize, Slot
+from PySide6.QtCore import Qt, QSize, Slot, QUrl, QRectF
 from PySide6.QtGui import (
     QFont,
     QColor,
@@ -17,10 +17,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QStackedWidget, QMessageBox, QFileDialog,
     QComboBox, QSlider, QDoubleSpinBox, QGroupBox, QGridLayout,
-    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect
+    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect, QSizePolicy
 )
-
-from PySide6.QtCore import QUrl
 
 from PySide6.QtMultimedia import (
     QAudioOutput,
@@ -303,62 +301,121 @@ class RectanglePreview(QWidget):
         super().__init__()
         self.controller = controller
         self.state = state
-        self.setMinimumHeight(240)
+        self.setMinimumSize(300, 300)
+        self.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
         self.state.changed.connect(self.update) # This is the reactive redraw system.
 
     def paintEvent(self, event) -> None:
+
         BED_W = 170.0
         BED_H = 250.0
 
         p = self.state.params
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        margin = 16.0
+        # =========================================================
+        # SAFE PADDING
+        # =========================================================
 
-        avail_w = max(10.0, float(self.width()) - 2 * margin)
-        avail_h = max(10.0, float(self.height()) - 2 * margin)
-        side = max(10.0, min(avail_w, avail_h))
+        padding = 40.0
 
-        # the preview want a square ratio, so it chooses the small dimension to guarantee. for example 
-        # avail_w = 600
-        # avail_h = 300
-        # side will be 300
-        # the preview becomes 300x300
+        avail_w = self.width() - padding * 2
+        avail_h = self.height() - padding * 2
 
-        ox = (float(self.width()) - side) / 2.0
-        oy = (float(self.height()) - side) / 2.0
+        if avail_w <= 0 or avail_h <= 0:
+            return
 
-        # converts from mm to pixel
+        # =========================================================
+        # KEEP BED ASPECT RATIO
+        # =========================================================
+
+        bed_ratio = BED_W / BED_H
+        area_ratio = avail_w / avail_h
+
+        if area_ratio > bed_ratio:
+            # limited by height
+            draw_h = avail_h
+            draw_w = draw_h * bed_ratio
+        else:
+            # limited by width
+            draw_w = avail_w
+            draw_h = draw_w / bed_ratio
+
+        ox = (self.width() - draw_w) / 2.0
+        oy = (self.height() - draw_h) / 2.0
+
+        # =========================================================
+        # MM → PIXEL CONVERSION
+        # =========================================================
+
         def mx(x_mm: float) -> float:
-            return ox + (x_mm / BED_W) * side
+            return ox + (x_mm / BED_W) * draw_w
 
         def my(y_mm: float) -> float:
-            return oy + side - (y_mm / BED_H) * side
-        
-        painter.setPen(QPen(QColor(200, 200, 200), 2))
-        painter.setBrush(QBrush(Qt.NoBrush))
-        
-        # Usable and safe area outline
+            return oy + draw_h - (y_mm / BED_H) * draw_h
+
+        # =========================================================
+        # PANEL BACKGROUND
+        # =========================================================
+
+        bg_rect = QRectF(
+            ox - 10,
+            oy - 10,
+            draw_w + 20,
+            draw_h + 20
+        )
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 40))
+        painter.drawRoundedRect(bg_rect, 18, 18)
+
+        # =========================================================
+        # SAFE AREA
+        # =========================================================
+
         sx0 = float(p.safe_x_min)
         sx1 = float(p.safe_x_max)
         sy0 = float(p.safe_y_min)
         sy1 = float(p.safe_y_max)
 
-        painter.setPen(QPen(QColor(120, 180, 255), 2)) 
-        painter.setBrush(QBrush(Qt.NoBrush))
         rx = mx(sx0)
         ry = my(sy1)
+
         rw = mx(sx1) - mx(sx0)
         rh = my(sy0) - my(sy1)
 
-        # the safer rectangle
-        painter.drawRect(rx, ry, rw, rh)
-        
-        # inside rectangle
-        painter.drawRect(rx + 65, ry + 65, 80 , 80)
+        safe_rect = QRectF(rx, ry, rw, rh)
 
-        # Requested rectangle
+        painter.setPen(QPen(QColor(120, 180, 255), 2))
+        painter.setBrush(Qt.NoBrush)
+
+        painter.drawRoundedRect(safe_rect, 4, 4)
+
+        # =========================================================
+        # CENTER RECTANGLE (RESPONSIVE)
+        # =========================================================
+
+        center_w = rw * 0.28
+        center_h = rh * 0.18
+
+        center_rect = QRectF(
+            rx + (rw - center_w) / 2,
+            ry + (rh - center_h) / 2,
+            center_w,
+            center_h
+        )
+
+        painter.drawRoundedRect(center_rect, 4, 4)
+
+        # =========================================================
+        # ACTIVE RECTANGLES
+        # =========================================================
+
         try:
             rectangles = self.controller._get_active_rectangles()
             valid = True
@@ -367,7 +424,12 @@ class RectanglePreview(QWidget):
             rectangles = []
             valid = False
 
-        painter.setPen(QPen(QColor("#22C55E" if valid else "#EF4444"), 2))
+        painter.setPen(
+            QPen(
+                QColor("#00FF9C" if valid else "#FF4D4D"),
+                2
+            )
+        )
 
         for axis, rect in rectangles:
 
@@ -375,9 +437,18 @@ class RectanglePreview(QWidget):
 
             rrx = mx(x0)
             rry = my(y1)
+
             rrw = mx(x1) - mx(x0)
             rrh = my(y0) - my(y1)
-            painter.drawRect(rrx, rry, rrw, rrh)
+
+            rect_obj = QRectF(
+                rrx,
+                rry,
+                rrw,
+                rrh
+            )
+
+            painter.drawRoundedRect(rect_obj, 3, 3)
  
 
 class MainWindow(QMainWindow):
@@ -486,7 +557,7 @@ class MainWindow(QMainWindow):
         brand_title = QLabel("OPTIMUS PRIME")
 
         brand_subtitle = QLabel(
-            "Industrial Control"
+            "Microfiber Machine Interface"
         )
 
         brand_subtitle.setStyleSheet(f"""
@@ -574,12 +645,12 @@ class MainWindow(QMainWindow):
         #         └── QStackedWidget (pages)
 
         self.page_welcome = WelcomePage(self)
-        self.page_draw = DrawPage(self)
+        self.page_fiber_layout = FiberLayoutPage(self)
         # self.page_summary = SummaryPage(self)
         # self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
-        self._add_page("Draw", self.page_draw)
+        self._add_page("Fiber Layout", self.page_fiber_layout)
         # self._add_page("Summary", self.page_summary)
         # self._add_page("Connection", self.page_connection)
 
@@ -610,14 +681,14 @@ class MainWindow(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemIsEnabled if enabled else item.flags() & ~Qt.ItemIsEnabled)
 
     def go(self, name: str) -> None:
-        mapping = {"Welcome": 0, "Draw": 1, "Syringe": 2, "Summary": 3, "Connection": 4, "Log": 5}
+        mapping = {"Welcome": 0, "Fiber Layout": 1, "Syringe": 2, "Summary": 3, "Connection": 4, "Log": 5}
         self.sidebar.setCurrentRow(mapping[name])
         # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
 
     def start_new_project(self) -> None:
         self._set_project_mode(True)
         self.setWindowTitle("Nanofiber Machine - New Project")
-        self.go("Draw")
+        self.go("Fiber Layout")
         self.controller.log("New project")
     
     def load_project_dialog(self) -> None:
@@ -829,194 +900,470 @@ class WelcomePage(QWidget):
         super().paintEvent(event)
 
 
-class DrawPage(QWidget):
+class FiberLayoutPage(QWidget):
     def __init__(self, mw: MainWindow) -> None:
         super().__init__()
+
         self.mw = mw
         self.state = mw.state
         self.controller = mw.controller
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 14, 18, 14)
-        outer.setSpacing(10)
+        self.bg = QPixmap("assets/layout_bg.png")
 
-        outer.addWidget(_title_label("Drawing"))
+        # =========================================================
+        # MAIN LAYOUT
+        # =========================================================
 
-        # ---------------- Rectangle parameters ----------------
-        rect = QGroupBox("Layout parameters")
-        rect_grid = QGridLayout(rect)
-        rect_grid.setHorizontalSpacing(14)
-        rect_grid.setVerticalSpacing(10)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(24)
+
+        # =========================================================
+        # LEFT PANEL — PARAMETERS
+        # =========================================================
+
+        left_panel = QFrame()
+        left_panel.setObjectName("controlPanel")
+        left_panel.setFixedWidth(360)
+
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(22, 22, 22, 22)
+        left_layout.setSpacing(18)
+
+        title = QLabel("FIBER LAYOUT")
+        title.setObjectName("pageTitle")
+        left_layout.addWidget(title)
+
+        # =========================================================
+        # INPUTS
+        # =========================================================
 
         self.fiber_orientation = QComboBox()
-        self.fiber_orientation.addItems(["Horizontal", "Vertical"])
-        self.fiber_orientation.currentTextChanged.connect(lambda t: self.state.set_param("fiber_orientation", t))
+        self.fiber_orientation.addItems(["Horizontal", "Vertical", "Both"])
+        self.fiber_orientation.currentTextChanged.connect(
+            lambda t: self.state.set_param("fiber_orientation", t)
+        )
 
         self.fiber_length = QDoubleSpinBox()
         self.fiber_length.setDecimals(2)
         self.fiber_length.setRange(0.0, 10000.0)
         self.fiber_length.setSingleStep(1.0)
-        self.fiber_length.valueChanged.connect(lambda v: self.state.set_param("fiber_length", float(v)))
+        self.fiber_length.valueChanged.connect(
+            lambda v: self.state.set_param("fiber_length", float(v))
+        )
 
         self.fiber_width = QDoubleSpinBox()
         self.fiber_width.setDecimals(2)
         self.fiber_width.setRange(0.0, 10000.0)
         self.fiber_width.setSingleStep(1.0)
-        self.fiber_width.valueChanged.connect(lambda v: self.state.set_param("fiber_width", float(v)))
+        self.fiber_width.valueChanged.connect(
+            lambda v: self.state.set_param("fiber_width", float(v))
+        )
 
         self.fiber_spacing = QDoubleSpinBox()
         self.fiber_spacing.setDecimals(2)
         self.fiber_spacing.setRange(0.01, 10000.0)
         self.fiber_spacing.setSingleStep(0.1)
-        self.fiber_spacing.valueChanged.connect(lambda v: self.state.set_param("fiber_spacing", float(v)))
+        self.fiber_spacing.valueChanged.connect(
+            lambda v: self.state.set_param("fiber_spacing", float(v))
+        )
 
         self.start_x = QDoubleSpinBox()
         self.start_x.setDecimals(2)
         self.start_x.setRange(-1000.0, 1000.0)
         self.start_x.setSingleStep(1.0)
-        self.start_x.valueChanged.connect(lambda v: self.state.set_param("start_x", float(v)))
+        self.start_x.valueChanged.connect(
+            lambda v: self.state.set_param("start_x", float(v))
+        )
 
         self.start_y = QDoubleSpinBox()
         self.start_y.setDecimals(2)
         self.start_y.setRange(-1000.0, 1000.0)
         self.start_y.setSingleStep(1.0)
-        self.start_y.valueChanged.connect(lambda v: self.state.set_param("start_y", float(v)))
+        self.start_y.valueChanged.connect(
+            lambda v: self.state.set_param("start_y", float(v))
+        )
 
-        rect_grid.addWidget(QLabel("Orientation"), 0, 0)
-        rect_grid.addWidget(self.fiber_orientation, 0, 1)
-        rect_grid.addWidget(QLabel("Length (mm)"), 1, 0)
-        rect_grid.addWidget(self.fiber_length, 1, 1)
-        rect_grid.addWidget(QLabel("Width (mm)"), 2, 0)
-        rect_grid.addWidget(self.fiber_width, 2, 1)
-        rect_grid.addWidget(QLabel("Spacing (mm)"), 3, 0)
-        rect_grid.addWidget(self.fiber_spacing, 3, 1)
-        rect_grid.addWidget(QLabel("Starting X (mm)"), 4, 0)
-        rect_grid.addWidget(self.start_x, 4, 1)
-        rect_grid.addWidget(QLabel("Starting Y (mm)"), 5, 0)
-        rect_grid.addWidget(self.start_y, 5, 1)
+        # =========================================================
+        # PARAMETER CARDS
+        # =========================================================
 
-        outer.addWidget(rect)
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Orientation",
+                self.fiber_orientation
+            )
+        )
 
-        outer.addWidget(_subtle_label("Usable drawing area preview"))
-        self.preview = RectanglePreview(self.controller, self.state)
-        outer.addWidget(self.preview)
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Length (mm)",
+                self.fiber_length
+            )
+        )
 
-        # ---------------- Common motion/deposition (kept) ----------------
-        common = QGroupBox("Drawing parameters")
-        common_grid = QGridLayout(common)
-        common_grid.setHorizontalSpacing(14)
-        common_grid.setVerticalSpacing(10)
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Width (mm)",
+                self.fiber_width
+            )
+        )
 
-        # speed slider + label
-        self.speed = QSlider(Qt.Horizontal)
-        self.speed.setRange(100, 5000)
-        self.speed.valueChanged.connect(lambda v: self.state.set_param("speed", int(v)))
-        self.speed_label = QLabel("")
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Spacing (mm)",
+                self.fiber_spacing
+            )
+        )
 
-        # droplet amount
-        self.amount = QDoubleSpinBox()
-        self.amount.setDecimals(3)
-        self.amount.setRange(0.0, 1000.0)
-        self.amount.setSingleStep(0.1)
-        self.amount.valueChanged.connect(lambda v: self.state.set_param("droplet_amount", float(v)))
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Starting X (mm)",
+                self.start_x
+            )
+        )
 
-        # z-hop
-        self.zhop = QDoubleSpinBox()
-        self.zhop.setDecimals(2)
-        self.zhop.setRange(0.0, 1000.0)
-        self.zhop.setSingleStep(0.5)
-        self.zhop.valueChanged.connect(lambda v: self.state.set_param("z_hop", float(v)))
+        left_layout.addWidget(
+            self.create_param_widget(
+                "Starting Y (mm)",
+                self.start_y
+            )
+        )
 
-        # z-offset
-        self.zoffset = QDoubleSpinBox()
-        self.zoffset.setDecimals(3)
-        self.zoffset.setRange(-1000.0, 1000.0)
-        self.zoffset.setSingleStep(0.01)
-        self.zoffset.valueChanged.connect(lambda v: self.state.set_param("z_offset", float(v)))
+        left_layout.addStretch()
 
-        # pause ms
-        self.pause_ms = QSpinBox()
-        self.pause_ms.setRange(0, 600000)
-        self.pause_ms.valueChanged.connect(lambda v: self.state.set_param("pause_ms", int(v)))
+        # =========================================================
+        # NEXT BUTTON
+        # =========================================================
 
-        self.chk_afterdrop = QCheckBox("Afterdrop")
-        self.chk_afterdrop.toggled.connect(lambda v: self.state.set_param("afterdrop", bool(v)))
+        self.btn_next = QPushButton("NEXT →")
+        self.btn_next.setFixedHeight(52)
+        self.btn_next.clicked.connect(
+            lambda: self.mw.go("Syringe")
+        )
 
-        self.chk_clean = QCheckBox("Clean")
-        self.chk_clean.toggled.connect(lambda v: self.state.set_param("clean", bool(v)))
+        left_layout.addWidget(self.btn_next)
 
-        self.btn_test_z = QPushButton("Test Z-Offset")
-        self.btn_test_z.clicked.connect(self.controller.test_zoffset)
+        # =========================================================
+        # RIGHT PANEL — PREVIEW
+        # =========================================================
 
-        common_grid.addWidget(QLabel("Speed"), 0, 0)
-        common_grid.addWidget(self.speed, 0, 1, 1, 2)
-        common_grid.addWidget(self.speed_label, 0, 3)
-        common_grid.addWidget(QLabel("Droplet Amount (E units)"), 1, 0)
-        common_grid.addWidget(self.amount, 1, 1)
-        common_grid.addWidget(QLabel("Z-Offset (mm)"), 1, 2)
-        common_grid.addWidget(self.zoffset, 1, 3)
-        common_grid.addWidget(QLabel("Z-Hop (mm)"), 2, 0)
-        common_grid.addWidget(self.zhop, 2, 1)
-        common_grid.addWidget(QLabel("Pause (ms)"), 2, 2)
-        common_grid.addWidget(self.pause_ms, 2, 3)
-        common_grid.addWidget(self.chk_afterdrop, 3, 0, 1, 2)
-        common_grid.addWidget(self.chk_clean, 3, 2, 1, 2)
-        common_grid.addWidget(self.btn_test_z, 4, 0, 1, 4)
+        right_panel = QFrame()
+        right_panel.setObjectName("previewPanel")
 
-        outer.addWidget(common)
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(24, 24, 24, 24)
+        right_layout.setSpacing(18)
 
-        # navigation
-        nav = QHBoxLayout()
-        nav.addStretch(1) # consume the avaible space first
-        self.btn_next = QPushButton("Next →") # and then the button is placed, on the right side
-        self.btn_next.clicked.connect(lambda: self.mw.go("Syringe"))
-        nav.addWidget(self.btn_next)
-        outer.addLayout(nav)
+        preview_title = QLabel("USABLE DRAWING AREA")
+        preview_title.setObjectName("previewTitle")
 
-        # "Whenever state changes,
-        # refresh the UI."
+        right_layout.addWidget(preview_title)
+
+        self.preview = RectanglePreview(
+            self.controller,
+            self.state
+        )
+
+      
+        self.preview.setObjectName("previewWidget")
+
+        right_layout.addWidget(self.preview, 1)
+
+        # =========================================================
+        # ADD PANELS
+        # =========================================================
+
+        main_layout.addWidget(left_panel)
+        main_layout.addWidget(right_panel, 1)
+
+        # =========================================================
+        # STYLE
+        # =========================================================
+
+        self.setStyleSheet("""
+        
+        QWidget {
+            color: white;
+            font-family: Inter;
+            font-size: 14px;
+        }
+
+        /* =====================================================
+           LEFT CONTROL PANEL
+        ===================================================== */
+
+        QFrame#controlPanel {
+            background: rgba(8, 15, 28, 220);
+            border: 1px solid rgba(0, 180, 255, 90);
+            border-radius: 22px;
+        }
+
+        /* =====================================================
+           RIGHT PREVIEW PANEL
+        ===================================================== */
+
+        QFrame#previewPanel {
+            background: rgba(5, 12, 22, 190);
+            border: 1px solid rgba(0, 180, 255, 70);
+            border-radius: 24px;
+        }
+
+        /* =====================================================
+           TITLES
+        ===================================================== */
+
+        QLabel#pageTitle {
+            font-size: 34px;
+            font-weight: 800;
+            color: white;
+            letter-spacing: 2px;
+            padding-bottom: 12px;
+        }
+
+        QLabel#previewTitle {
+            font-size: 13px;
+            font-weight: 700;
+            color: rgb(0, 220, 255);
+            letter-spacing: 3px;
+        }
+
+        /* =====================================================
+           PARAMETER CARD
+        ===================================================== */
+
+        QFrame#paramCard {
+            background: rgba(14, 24, 38, 235);
+            border: 1px solid rgba(0, 200, 255, 70);
+            border-radius: 16px;
+        }
+
+        QLabel#paramTitle {
+            color: rgb(0, 220, 255);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            padding-left: 2px;
+        }
+
+        /* =====================================================
+           INPUTS
+        ===================================================== */
+
+        QDoubleSpinBox,
+        QComboBox {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            padding-top: 6px;
+            padding-bottom: 4px;
+        }
+
+        QDoubleSpinBox::up-button {
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+            width: 22px;
+            border: none;
+            background: transparent;
+            margin-right: 6px;
+        }
+                           
+        QDoubleSpinBox::down-button {
+            subcontrol-origin: border;
+            subcontrol-position: bottom right;
+            width: 22px;
+            border: none;
+            background: transparent;
+            margin-right: 6px;
+        }
+                           
+        QDoubleSpinBox::up-arrow {
+            image: url(assets/arrow_up_cyan.svg);
+            width: 14px;
+            height: 14px;
+        }
+                           
+        QDoubleSpinBox::down-arrow {
+            image: url(assets/arrow_down_cyan.svg);
+            width: 14px;
+            height: 14px;
+        }
+                           
+        QDoubleSpinBox::up-button:hover,
+        QDoubleSpinBox::down-button:hover {
+            background: rgba(0, 220, 255, 20);
+            border-radius: 6px;
+        }
+
+        QComboBox::drop-down {
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+            width: 22px;
+            border: none;
+            background: transparent;
+            padding-right: 6px;
+        }
+
+        QComboBox::down-arrow {
+            image: url(assets/arrow_down_cyan.svg);
+            width: 14px;
+            height: 14px;
+        }
+
+        QComboBox::drop-down:hover {
+            background: rgba(0, 220, 255, 20);
+            border-radius: 6px;
+        }                  
+
+        QComboBox QAbstractItemView {
+            background: rgb(10, 18, 30);
+            color: white;
+            selection-background-color: rgb(0, 120, 255);
+            border: 1px solid rgb(0, 180, 255);
+        }
+
+        QComboBox QAbstractItemView::item:hover {
+            background: rgba(0, 220, 255, 35);
+            color: rgb(0, 220, 255);
+            border: none;
+        }
+
+                           
+        
+        /* =====================================================
+           BUTTON
+        ===================================================== */
+
+        QPushButton {
+            background: qlineargradient(
+                x1:0, y1:0,
+                x2:1, y2:0,
+                stop:0 rgba(0, 110, 255, 220),
+                stop:1 rgba(0, 180, 255, 220)
+            );
+
+            border: 1px solid rgb(0, 220, 255);
+            border-radius: 16px;
+
+            color: white;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 2px;
+
+            padding: 12px;
+        }
+
+        QPushButton:hover {
+            border: 1px solid rgb(100, 240, 255);
+            background: rgba(0, 180, 255, 255);
+        }
+
+        QPushButton:pressed {
+            padding-top: 14px;
+        }
+
+        /* =====================================================
+           PREVIEW
+        ===================================================== */
+
+        QWidget#previewWidget {
+            background: rgba(0, 0, 0, 80);
+            border-radius: 22px;
+            border: 1px solid rgba(0, 180, 255, 60);
+        }
+
+        """)
+
+        # =========================================================
+        # STATE SYNC
+        # =========================================================
+
         self.state.changed.connect(self._sync_from_state)
 
-        # initial UI population
         self._sync_from_state()
+
+    # =============================================================
+    # PARAM CARD
+    # =============================================================
+
+    def create_param_widget(
+        self,
+        title: str,
+        widget: QWidget
+    ) -> QWidget:
+
+        container = QFrame()
+        container.setObjectName("paramCard")
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(4)
+
+        label = QLabel(title.upper())
+        label.setObjectName("paramTitle")
+
+        layout.addWidget(label)
+        layout.addWidget(widget)
+
+        return container
+
+    # =============================================================
+    # BACKGROUND
+    # =============================================================
+
+    def paintEvent(self, event):
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.SmoothPixmapTransform
+        )
+
+        scaled = self.bg.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        x = (self.width() - scaled.width()) / 2
+        y = (self.height() - scaled.height()) / 2
+
+        painter.drawPixmap(
+            int(x),
+            int(y),
+            scaled,
+        )
+
+        super().paintEvent(event)
+
+    # =============================================================
+    # STATE UPDATE
+    # =============================================================
 
     @Slot()
     def _sync_from_state(self) -> None:
+
         p = self.state.params
 
-        # rectangle
         self.fiber_orientation.blockSignals(True)
-        self.fiber_orientation.setCurrentText(str(p.fiber_orientation))
+        self.fiber_orientation.setCurrentText(
+            str(p.fiber_orientation)
+        )
         self.fiber_orientation.blockSignals(False)
 
-        for w, val in [(self.fiber_length, p.fiber_length), (self.fiber_width, p.fiber_width), (self.fiber_spacing, p.fiber_spacing),
-                      (self.start_x, p.start_x), (self.start_y, p.start_y)]:
+        for w, val in [
+            (self.fiber_length, p.fiber_length),
+            (self.fiber_width, p.fiber_width),
+            (self.fiber_spacing, p.fiber_spacing),
+            (self.start_x, p.start_x),
+            (self.start_y, p.start_y),
+        ]:
+
             w.blockSignals(True)
             w.setValue(float(val))
             w.blockSignals(False)
-
-        # common
-        self.speed.blockSignals(True)
-        self.speed.setValue(int(p.speed))
-        self.speed.blockSignals(False)
-        self.speed_label.setText(f"{int(p.speed)} mm/min")
-
-        for w, val in [(self.amount, p.droplet_amount), (self.zhop, p.z_hop), (self.zoffset, p.z_offset)]:
-            w.blockSignals(True)
-            w.setValue(float(val))
-            w.blockSignals(False)
-
-        self.pause_ms.blockSignals(True)
-        self.pause_ms.setValue(int(p.pause_ms))
-        self.pause_ms.blockSignals(False)
-
-        self.chk_afterdrop.blockSignals(True)
-        self.chk_afterdrop.setChecked(bool(p.afterdrop))
-        self.chk_afterdrop.blockSignals(False)
-
-        self.chk_clean.blockSignals(True)
-        self.chk_clean.setChecked(bool(p.clean))
-        self.chk_clean.blockSignals(False)
 
 
 
