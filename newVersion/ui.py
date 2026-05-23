@@ -574,12 +574,12 @@ class MainWindow(QMainWindow):
         #         └── QStackedWidget (pages)
 
         self.page_welcome = WelcomePage(self)
-        # self.page_draw = DrawPage(self)
+        self.page_draw = DrawPage(self)
         # self.page_summary = SummaryPage(self)
         # self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
-        # self._add_page("Draw", self.page_draw)
+        self._add_page("Draw", self.page_draw)
         # self._add_page("Summary", self.page_summary)
         # self._add_page("Connection", self.page_connection)
 
@@ -829,7 +829,194 @@ class WelcomePage(QWidget):
         super().paintEvent(event)
 
 
+class DrawPage(QWidget):
+    def __init__(self, mw: MainWindow) -> None:
+        super().__init__()
+        self.mw = mw
+        self.state = mw.state
+        self.controller = mw.controller
 
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 14, 18, 14)
+        outer.setSpacing(10)
+
+        outer.addWidget(_title_label("Drawing"))
+
+        # ---------------- Rectangle parameters ----------------
+        rect = QGroupBox("Layout parameters")
+        rect_grid = QGridLayout(rect)
+        rect_grid.setHorizontalSpacing(14)
+        rect_grid.setVerticalSpacing(10)
+
+        self.fiber_orientation = QComboBox()
+        self.fiber_orientation.addItems(["Horizontal", "Vertical"])
+        self.fiber_orientation.currentTextChanged.connect(lambda t: self.state.set_param("fiber_orientation", t))
+
+        self.fiber_length = QDoubleSpinBox()
+        self.fiber_length.setDecimals(2)
+        self.fiber_length.setRange(0.0, 10000.0)
+        self.fiber_length.setSingleStep(1.0)
+        self.fiber_length.valueChanged.connect(lambda v: self.state.set_param("fiber_length", float(v)))
+
+        self.fiber_width = QDoubleSpinBox()
+        self.fiber_width.setDecimals(2)
+        self.fiber_width.setRange(0.0, 10000.0)
+        self.fiber_width.setSingleStep(1.0)
+        self.fiber_width.valueChanged.connect(lambda v: self.state.set_param("fiber_width", float(v)))
+
+        self.fiber_spacing = QDoubleSpinBox()
+        self.fiber_spacing.setDecimals(2)
+        self.fiber_spacing.setRange(0.01, 10000.0)
+        self.fiber_spacing.setSingleStep(0.1)
+        self.fiber_spacing.valueChanged.connect(lambda v: self.state.set_param("fiber_spacing", float(v)))
+
+        self.start_x = QDoubleSpinBox()
+        self.start_x.setDecimals(2)
+        self.start_x.setRange(-1000.0, 1000.0)
+        self.start_x.setSingleStep(1.0)
+        self.start_x.valueChanged.connect(lambda v: self.state.set_param("start_x", float(v)))
+
+        self.start_y = QDoubleSpinBox()
+        self.start_y.setDecimals(2)
+        self.start_y.setRange(-1000.0, 1000.0)
+        self.start_y.setSingleStep(1.0)
+        self.start_y.valueChanged.connect(lambda v: self.state.set_param("start_y", float(v)))
+
+        rect_grid.addWidget(QLabel("Orientation"), 0, 0)
+        rect_grid.addWidget(self.fiber_orientation, 0, 1)
+        rect_grid.addWidget(QLabel("Length (mm)"), 1, 0)
+        rect_grid.addWidget(self.fiber_length, 1, 1)
+        rect_grid.addWidget(QLabel("Width (mm)"), 2, 0)
+        rect_grid.addWidget(self.fiber_width, 2, 1)
+        rect_grid.addWidget(QLabel("Spacing (mm)"), 3, 0)
+        rect_grid.addWidget(self.fiber_spacing, 3, 1)
+        rect_grid.addWidget(QLabel("Starting X (mm)"), 4, 0)
+        rect_grid.addWidget(self.start_x, 4, 1)
+        rect_grid.addWidget(QLabel("Starting Y (mm)"), 5, 0)
+        rect_grid.addWidget(self.start_y, 5, 1)
+
+        outer.addWidget(rect)
+
+        outer.addWidget(_subtle_label("Usable drawing area preview"))
+        self.preview = RectanglePreview(self.controller, self.state)
+        outer.addWidget(self.preview)
+
+        # ---------------- Common motion/deposition (kept) ----------------
+        common = QGroupBox("Drawing parameters")
+        common_grid = QGridLayout(common)
+        common_grid.setHorizontalSpacing(14)
+        common_grid.setVerticalSpacing(10)
+
+        # speed slider + label
+        self.speed = QSlider(Qt.Horizontal)
+        self.speed.setRange(100, 5000)
+        self.speed.valueChanged.connect(lambda v: self.state.set_param("speed", int(v)))
+        self.speed_label = QLabel("")
+
+        # droplet amount
+        self.amount = QDoubleSpinBox()
+        self.amount.setDecimals(3)
+        self.amount.setRange(0.0, 1000.0)
+        self.amount.setSingleStep(0.1)
+        self.amount.valueChanged.connect(lambda v: self.state.set_param("droplet_amount", float(v)))
+
+        # z-hop
+        self.zhop = QDoubleSpinBox()
+        self.zhop.setDecimals(2)
+        self.zhop.setRange(0.0, 1000.0)
+        self.zhop.setSingleStep(0.5)
+        self.zhop.valueChanged.connect(lambda v: self.state.set_param("z_hop", float(v)))
+
+        # z-offset
+        self.zoffset = QDoubleSpinBox()
+        self.zoffset.setDecimals(3)
+        self.zoffset.setRange(-1000.0, 1000.0)
+        self.zoffset.setSingleStep(0.01)
+        self.zoffset.valueChanged.connect(lambda v: self.state.set_param("z_offset", float(v)))
+
+        # pause ms
+        self.pause_ms = QSpinBox()
+        self.pause_ms.setRange(0, 600000)
+        self.pause_ms.valueChanged.connect(lambda v: self.state.set_param("pause_ms", int(v)))
+
+        self.chk_afterdrop = QCheckBox("Afterdrop")
+        self.chk_afterdrop.toggled.connect(lambda v: self.state.set_param("afterdrop", bool(v)))
+
+        self.chk_clean = QCheckBox("Clean")
+        self.chk_clean.toggled.connect(lambda v: self.state.set_param("clean", bool(v)))
+
+        self.btn_test_z = QPushButton("Test Z-Offset")
+        self.btn_test_z.clicked.connect(self.controller.test_zoffset)
+
+        common_grid.addWidget(QLabel("Speed"), 0, 0)
+        common_grid.addWidget(self.speed, 0, 1, 1, 2)
+        common_grid.addWidget(self.speed_label, 0, 3)
+        common_grid.addWidget(QLabel("Droplet Amount (E units)"), 1, 0)
+        common_grid.addWidget(self.amount, 1, 1)
+        common_grid.addWidget(QLabel("Z-Offset (mm)"), 1, 2)
+        common_grid.addWidget(self.zoffset, 1, 3)
+        common_grid.addWidget(QLabel("Z-Hop (mm)"), 2, 0)
+        common_grid.addWidget(self.zhop, 2, 1)
+        common_grid.addWidget(QLabel("Pause (ms)"), 2, 2)
+        common_grid.addWidget(self.pause_ms, 2, 3)
+        common_grid.addWidget(self.chk_afterdrop, 3, 0, 1, 2)
+        common_grid.addWidget(self.chk_clean, 3, 2, 1, 2)
+        common_grid.addWidget(self.btn_test_z, 4, 0, 1, 4)
+
+        outer.addWidget(common)
+
+        # navigation
+        nav = QHBoxLayout()
+        nav.addStretch(1) # consume the avaible space first
+        self.btn_next = QPushButton("Next →") # and then the button is placed, on the right side
+        self.btn_next.clicked.connect(lambda: self.mw.go("Syringe"))
+        nav.addWidget(self.btn_next)
+        outer.addLayout(nav)
+
+        # "Whenever state changes,
+        # refresh the UI."
+        self.state.changed.connect(self._sync_from_state)
+
+        # initial UI population
+        self._sync_from_state()
+
+    @Slot()
+    def _sync_from_state(self) -> None:
+        p = self.state.params
+
+        # rectangle
+        self.fiber_orientation.blockSignals(True)
+        self.fiber_orientation.setCurrentText(str(p.fiber_orientation))
+        self.fiber_orientation.blockSignals(False)
+
+        for w, val in [(self.fiber_length, p.fiber_length), (self.fiber_width, p.fiber_width), (self.fiber_spacing, p.fiber_spacing),
+                      (self.start_x, p.start_x), (self.start_y, p.start_y)]:
+            w.blockSignals(True)
+            w.setValue(float(val))
+            w.blockSignals(False)
+
+        # common
+        self.speed.blockSignals(True)
+        self.speed.setValue(int(p.speed))
+        self.speed.blockSignals(False)
+        self.speed_label.setText(f"{int(p.speed)} mm/min")
+
+        for w, val in [(self.amount, p.droplet_amount), (self.zhop, p.z_hop), (self.zoffset, p.z_offset)]:
+            w.blockSignals(True)
+            w.setValue(float(val))
+            w.blockSignals(False)
+
+        self.pause_ms.blockSignals(True)
+        self.pause_ms.setValue(int(p.pause_ms))
+        self.pause_ms.blockSignals(False)
+
+        self.chk_afterdrop.blockSignals(True)
+        self.chk_afterdrop.setChecked(bool(p.afterdrop))
+        self.chk_afterdrop.blockSignals(False)
+
+        self.chk_clean.blockSignals(True)
+        self.chk_clean.setChecked(bool(p.clean))
+        self.chk_clean.blockSignals(False)
 
 
 
