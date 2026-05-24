@@ -10,6 +10,8 @@ import json
 import time
 import threading
 import math
+import re
+import queue
 
 try:
     import serial
@@ -155,116 +157,21 @@ class AppState(QObject):
         self.temperature_changed.emit(
             float(value)
         )
-
         self.changed.emit()
 
     def set_target_temperature(
         self,
         value: float
     ):
-
         self.params.target_temperature = float(value)
-
         self.changed.emit()
 
     def set_temperature_status(
         self,
         status: str
     ):
-
         self.params.temperature_status = str(status)
-
         self.changed.emit()
-
-    # =========================================================
-    # TEMPERATURE PARSER
-    # =========================================================
-
-    def _parse_temperature(
-        self,
-        line: str
-    ):
-
-        """
-        Example:
-
-        ok T:31.4 /40.0 B:25.0 /0.0
-        """
-
-        import re
-
-        current_match = re.search(
-            r"T:([0-9]+(?:\.[0-9]+)?)",
-            line
-        )
-
-        if not current_match:
-            return
-
-        try:
-
-            current_temp = float(
-                current_match.group(1)
-            )
-
-        except Exception:
-            return
-
-        self.state.set_current_temperature(
-            current_temp
-        )
-
-        # =====================================================
-        # TARGET
-        # =====================================================
-
-        target_match = re.search(
-            r"T:[0-9]+(?:\.[0-9]+)?\s*/([0-9]+(?:\.[0-9]+)?)",
-            line
-        )
-
-        if target_match:
-
-            try:
-
-                target_temp = float(
-                    target_match.group(1)
-                )
-
-                self.state.set_target_temperature(
-                    target_temp
-                )
-
-            except Exception:
-                pass
-
-        # =====================================================
-        # STATUS
-        # =====================================================
-
-        target = float(
-            self.state.params.target_temperature
-        )
-
-        if target <= 0:
-
-            status = "IDLE"
-
-        elif abs(current_temp - target) < 1.0:
-
-            status = "STABLE"
-
-        elif current_temp < target:
-
-            status = "HEATING"
-
-        else:
-
-            status = "COOLING"
-
-        self.state.set_temperature_status(
-            status
-        )
 
 # ----------------------------- Drawing Worker -----------------------------
 
@@ -312,8 +219,18 @@ class MachineController(QObject):
         # =========================================================
         # SERIAL LISTENER
         # =========================================================
+
         self._serial_listener_thread = None
         self._serial_listener_running = False
+
+        # =========================================================
+        # SERIAL SYNCHRONIZATION
+        # =========================================================
+        # protects ALL serial writes
+        self._serial_lock = threading.Lock()
+
+        # queue for synchronous command responses
+        self._response_queue = queue.Queue()
 
     def log(self, msg: str) -> None:
         self.state.log.emit(msg)
@@ -384,6 +301,77 @@ class MachineController(QObject):
 
         self.log(
             f"Target temperature set to {target:.1f} °C"
+        )
+
+    # =========================================================
+    # TEMPERATURE PARSER
+    # =========================================================
+
+    def _parse_temperature(
+        self,
+        line: str
+    ):
+        """
+        Example:
+
+        ok T:31.4 /40.0 B:25.0 /0.0
+        """
+        current_match = re.search(
+            r"T\d*:([0-9]+(?:\.[0-9]+)?)",
+            line
+        )
+        if not current_match:
+            return
+
+        try:
+            current_temp = float(
+                current_match.group(1)
+            )
+
+        except Exception:
+            return
+
+        self.state.set_current_temperature(
+            current_temp
+        )
+
+        target = float(
+            self.state.params.target_temperature
+        )
+
+        target_match = re.search(
+            r"T\d*:[0-9]+(?:\.[0-9]+)?\s*/([0-9]+(?:\.[0-9]+)?)",
+            line
+        )
+
+        if target_match:
+            try:
+
+                target = float(
+                    target_match.group(1)
+                )
+
+                self.state.set_target_temperature(
+                    target
+                )
+
+            except Exception:
+                pass
+
+        if target <= 0:
+            status = "IDLE"
+
+        elif abs(current_temp - target) < 1.0:
+            status = "STABLE"
+
+        elif current_temp < target:
+            status = "HEATING"
+        
+        else:
+            status = "COOLING"
+
+        self.state.set_temperature_status(
+            status
         )
 
     # ---------- Project I/O ----------
@@ -492,6 +480,12 @@ class MachineController(QObject):
 
         self._serial_listener_running = False
 
+        if self._serial_listener_thread is not None:
+
+            self._serial_listener_thread.join(timeout=1.0)
+
+            self._serial_listener_thread = None
+
         self.log(
             "Serial listener stopped"
         )
@@ -517,6 +511,43 @@ class MachineController(QObject):
                 ).strip()
 
                 if not line:
+                    continue
+
+                low = line.lower()
+
+                if low.startswith("start"):
+                    continue
+
+                # =================================================
+                # OK RESPONSES
+                # =================================================
+
+                if low == "ok" or low.startswith("ok"):
+
+                    self._response_queue.put(line)
+
+                    self._parse_temperature(line)
+
+                    continue
+
+                # =================================================
+                # BUSY
+                # =================================================
+
+                if "busy" in low:
+
+                    continue
+
+                # =================================================
+                # ERRORS
+                # =================================================
+
+                if "error" in low:
+
+                    self._response_queue.put(
+                        RuntimeError(line)
+                    )
+
                     continue
 
                 # =================================================
@@ -567,14 +598,17 @@ class MachineController(QObject):
             self.connection_changed.emit(True)
 
             self.log(f"Connected to the printer on {port}")
+            self._start_serial_listener()
+
             self.log("Homing printer...")
 
-            # Perform mandatory homing (G28) after connection to ensure a known reference state
-            # This is critical for safe and repeatable motion operations
             self._send_and_wait_ok("G28", timeout_s=120.0)
 
             self.log("Homing done")
-            self._start_serial_listener()
+
+            # enable live temperature telemetry
+            self.enable_temperature_reporting(2)
+
             return True
         
         except Exception as e:
@@ -616,50 +650,61 @@ class MachineController(QObject):
             self.log(f"Could not disconnect: {e}")
             return False
         
-    def _send_and_wait_ok(self, command: str, timeout_s: float = 30.0) -> None:
-        """
-        Send a single G-code command and block until an 'ok' response is received.
-        """
-        # Ensure an active serial connection exists
+    def _send_and_wait_ok(
+        self,
+        command: str,
+        timeout_s: float = 30.0
+    ) -> None:
+
         if self.ser is None:
-            raise RuntimeError("No connection to the printer")
+            raise RuntimeError(
+                "No connection to the printer"
+            )
 
-        # Send command with newline termination
-        self.ser.write((command + "\n").encode("utf-8"))
+        # clear old responses
+        while not self._response_queue.empty():
 
-        # Set timeout deadline
+            try:
+                self._response_queue.get_nowait()
+
+            except Exception:
+                break
+
+        # protected write
+        with self._serial_lock:
+
+            self.ser.write(
+                (command + "\n").encode("utf-8")
+            )
+
+            self.ser.flush()
+
         deadline = time.time() + timeout_s
-        last_nonempty = None  # Keep last meaningful response for debugging
 
-        # Read responses until 'ok', error, or timeout
         while time.time() < deadline:
-            raw = self.ser.readline()
-            if not raw:
-                continue  # Ignore empty reads
 
-            line = raw.decode(errors="ignore").strip()
-            if not line:
-                continue  # Ignore blank lines
+            remaining = max(
+                0.1,
+                deadline - time.time()
+            )
 
-            last_nonempty = line
-            low = line.lower()
+            try:
 
-            # Success: command completed
-            if low == "ok" or low.startswith("ok"):
-                return
+                response = self._response_queue.get(
+                    timeout=remaining
+                )
 
-            # Printer still processing
-            if "busy" in low:
+            except queue.Empty:
                 continue
 
-            # Firmware reported error
-            if "error" in low:
-                raise RuntimeError(f"Firmware error after '{command}': {line}")
+            if isinstance(response, RuntimeError):
 
-        # No response within timeout
+                raise response
+
+            return
+
         raise TimeoutError(
             f"Timeout waiting for ok after: {command}"
-            + (f" (last: {last_nonempty})" if last_nonempty else "")
         )
     
     # =========================================================
@@ -686,11 +731,12 @@ class MachineController(QObject):
                 "No connection to the printer"
             )
 
-        self.ser.write(
-            (command + "\n").encode("utf-8")
-        )
+        with self._serial_lock:
+            self.ser.write(
+                (command + "\n").encode("utf-8")
+            )
 
-        self.ser.flush()
+            self.ser.flush()
 
         self.log(f"> {command}")
     
@@ -801,11 +847,10 @@ class MachineController(QObject):
 
             if self.ser is not None:
 
-                # firmware emergency stop
-                self.ser.write(b"M112\n")
+                with self._serial_lock:
 
-                # optional flush
-                self.ser.flush()
+                    self.ser.write(b"M112\n")
+                    self.ser.flush()
 
             self.log("EMERGENCY STOP triggered")
 
@@ -855,8 +900,10 @@ class MachineController(QObject):
             # ---------------- firmware reset ----------------
 
             # M999 = restart after M112 emergency stop
-            self.ser.write(b"M999\n")
-            self.ser.flush()
+            with self._serial_lock:
+
+                self.ser.write(b"M999\n")
+                self.ser.flush()
 
             # give firmware time to recover
             time.sleep(2.0)
