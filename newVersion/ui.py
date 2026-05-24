@@ -646,11 +646,13 @@ class MainWindow(QMainWindow):
 
         self.page_welcome = WelcomePage(self)
         self.page_fiber_layout = FiberLayoutPage(self)
+        self.page_draw_settings = DrawSettingsPage(self)
         # self.page_summary = SummaryPage(self)
         # self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
         self._add_page("Fiber Layout", self.page_fiber_layout)
+        self._add_page("Draw Settings", self.page_draw_settings)
         # self._add_page("Summary", self.page_summary)
         # self._add_page("Connection", self.page_connection)
 
@@ -681,7 +683,7 @@ class MainWindow(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemIsEnabled if enabled else item.flags() & ~Qt.ItemIsEnabled)
 
     def go(self, name: str) -> None:
-        mapping = {"Welcome": 0, "Fiber Layout": 1, "Syringe": 2, "Summary": 3, "Connection": 4, "Log": 5}
+        mapping = {"Welcome": 0, "Fiber Layout": 1, "Draw Settings": 2, "Summary": 3, "Connection": 4, "Log": 5}
         self.sidebar.setCurrentRow(mapping[name])
         # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
 
@@ -1039,7 +1041,7 @@ class FiberLayoutPage(QWidget):
         self.btn_next = QPushButton("NEXT →")
         self.btn_next.setFixedHeight(52)
         self.btn_next.clicked.connect(
-            lambda: self.mw.go("Syringe")
+            lambda: self.mw.go("Draw Settings")
         )
 
         left_layout.addWidget(self.btn_next)
@@ -1366,7 +1368,841 @@ class FiberLayoutPage(QWidget):
             w.blockSignals(False)
 
 
+class DrawSettingsPage(QWidget):
 
+    def __init__(self, mw: MainWindow) -> None:
+        super().__init__()
+
+        self.mw = mw
+        self.state = mw.state
+        self.controller = mw.controller
+
+        self.bg = QPixmap("assets/layout_bg.png")
+
+        # =========================================================
+        # MAIN LAYOUT
+        # =========================================================
+
+        root = QHBoxLayout(self)
+
+        root.setContentsMargins(
+            24,
+            24,
+            24,
+            24
+        )
+
+        root.setSpacing(24)
+
+        # =========================================================
+        # MAIN PANEL
+        # =========================================================
+
+        panel = QFrame()
+
+        panel.setObjectName(
+            "controlPanel"
+        )
+
+        panel_layout = QVBoxLayout(panel)
+
+        panel_layout.setContentsMargins(
+            28,
+            28,
+            28,
+            28
+        )
+
+        panel_layout.setSpacing(22)
+
+        # =========================================================
+        # TITLE
+        # =========================================================
+
+        title = QLabel("DRAW SETTINGS")
+
+        title.setObjectName(
+            "pageTitle"
+        )
+
+        panel_layout.addWidget(title)
+
+        # =========================================================
+        # GRID
+        # =========================================================
+
+        grid = QGridLayout()
+
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(18)
+
+        # =========================================================
+        # SPEED CONTROLS
+        # =========================================================
+
+        self.speed = QSpinBox()
+
+        self.speed.setRange(
+            100,
+            5000
+        )
+
+        self.speed.setSingleStep(100)
+
+        self.speed.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "speed",
+                int(v)
+            )
+        )
+
+        self.btn_slow = QPushButton("SLOW")
+        self.btn_medium = QPushButton("MEDIUM")
+        self.btn_fast = QPushButton("FAST")
+
+        self.btn_slow.clicked.connect(
+            lambda: self.speed.setValue(800)
+        )
+
+        self.btn_medium.clicked.connect(
+            lambda: self.speed.setValue(1800)
+        )
+
+        self.btn_fast.clicked.connect(
+            lambda: self.speed.setValue(3200)
+        )
+
+        speed_container = QFrame()
+        speed_container.setObjectName("paramCard")
+
+        speed_layout = QVBoxLayout(speed_container)
+
+        speed_layout.setContentsMargins(
+            18,
+            16,
+            18,
+            16
+        )
+
+        speed_layout.setSpacing(14)
+
+        speed_title = QLabel("SPEED")
+        speed_title.setObjectName("paramTitle")
+
+        speed_layout.addWidget(speed_title)
+
+        preset_layout = QHBoxLayout()
+
+        preset_layout.setSpacing(10)
+
+        preset_layout.addWidget(self.btn_slow)
+        preset_layout.addWidget(self.btn_medium)
+        preset_layout.addWidget(self.btn_fast)
+
+        speed_layout.addLayout(preset_layout)
+
+        speed_layout.addWidget(
+            self.create_inline_param(
+                "CUSTOM SPEED (MM/MIN)",
+                self.speed
+            )
+        )
+
+        # =========================================================
+        # DROPLET AMOUNT
+        # =========================================================
+
+        self.amount = QDoubleSpinBox()
+
+        self.amount.setDecimals(3)
+        self.amount.setRange(0.0, 1000.0)
+        self.amount.setSingleStep(0.1)
+
+        self.amount.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "droplet_amount",
+                float(v)
+            )
+        )
+
+        # =========================================================
+        # PAUSE
+        # =========================================================
+
+        self.pause_ms = QSpinBox()
+
+        self.pause_ms.setRange(
+            0,
+            600000
+        )
+
+        self.pause_ms.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "pause_ms",
+                int(v)
+            )
+        )
+
+        # =========================================================
+        # Z-HOP
+        # =========================================================
+
+        self.zhop = QDoubleSpinBox()
+
+        self.zhop.setDecimals(2)
+        self.zhop.setRange(0.0, 1000.0)
+        self.zhop.setSingleStep(0.5)
+
+        self.zhop.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "z_hop",
+                float(v)
+            )
+        )
+
+        # =========================================================
+        # Z-OFFSET
+        # =========================================================
+
+        self.zoffset = QDoubleSpinBox()
+
+        self.zoffset.setDecimals(3)
+        self.zoffset.setRange(-1000.0, 1000.0)
+        self.zoffset.setSingleStep(0.01)
+
+        self.zoffset.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "z_offset",
+                float(v)
+            )
+        )
+
+        # =========================================================
+        # TOGGLE BUTTONS
+        # =========================================================
+
+        self.btn_afterdrop = QPushButton(
+            "AFTERDROP"
+        )
+
+        self.btn_afterdrop.setObjectName(
+            "toggleButton"
+        )
+
+        self.btn_afterdrop.setCheckable(True)
+
+        self.btn_afterdrop.toggled.connect(
+            lambda v: self.state.set_param(
+                "afterdrop",
+                bool(v)
+            )
+        )
+
+        self.btn_afterdrop.toggled.connect(
+            lambda _: self._update_toggle_texts()
+        )
+
+        self.btn_clean = QPushButton(
+            "CLEAN"
+        )
+
+        self.btn_clean.setObjectName(
+            "toggleButton"
+        )
+
+        self.btn_clean.setCheckable(True)
+
+        self.btn_clean.toggled.connect(
+            lambda v: self.state.set_param(
+                "clean",
+                bool(v)
+            )
+        )
+
+        self.btn_clean.toggled.connect(
+            lambda _: self._update_toggle_texts()
+        )
+
+        # =========================================================
+        # TEST BUTTON
+        # =========================================================
+
+        self.btn_test_z = QPushButton(
+            "TEST Z-OFFSET"
+        )
+
+        self.btn_test_z.setObjectName(
+            "secondaryAction"
+        )
+
+        self.btn_test_z.setFixedSize(240, 52)
+
+        self.btn_test_z.clicked.connect(
+            self.controller.test_zoffset
+        )
+
+        # =========================================================
+        # NEXT BUTTON
+        # =========================================================
+
+        self.btn_next = QPushButton(
+            "NEXT →"
+        )
+
+        self.btn_next.setFixedSize(240, 52)
+        
+
+        self.btn_next.clicked.connect(
+            lambda: self.mw.go("Syringe")
+        )
+
+        # =========================================================
+        # GRID INSERTION
+        # =========================================================
+
+        grid.addWidget(
+            speed_container,
+            0,
+            0,
+            1,
+            2
+        )
+
+        grid.addWidget(
+            self.create_param_widget(
+                "Droplet Amount",
+                self.amount
+            ),
+            1,
+            0
+        )
+
+        grid.addWidget(
+            self.create_param_widget(
+                "Pause (ms)",
+                self.pause_ms
+            ),
+            1,
+            1
+        )
+
+        grid.addWidget(
+            self.create_param_widget(
+                "Z-Hop (mm)",
+                self.zhop
+            ),
+            2,
+            0
+        )
+
+        grid.addWidget(
+            self.create_toggle_widget(
+                self.btn_afterdrop
+            ),
+            2,
+            1
+        )
+
+        grid.addWidget(
+            self.create_param_widget(
+                "Z-Offset (mm)",
+                self.zoffset
+            ),
+            3,
+            0
+        )
+
+        grid.addWidget(
+            self.create_toggle_widget(
+                self.btn_clean
+            ),
+            3,
+            1
+        )
+
+        # =========================================================
+        # TEST BUTTON ROW
+        # =========================================================
+
+        test_row = QHBoxLayout()
+
+        test_row.addWidget(
+            self.btn_test_z,
+            alignment=Qt.AlignLeft
+        )
+
+        test_row.addStretch()
+
+        grid.addLayout(
+            test_row,
+            4,
+            0,
+            1,
+            2
+        )
+
+        # =========================================================
+        # NEXT BUTTON ROW
+        # =========================================================
+
+        next_row = QHBoxLayout()
+
+        next_row.addStretch()
+
+        next_row.addWidget(
+            self.btn_next,
+            alignment=Qt.AlignRight
+        )
+
+        grid.addLayout(
+            next_row,
+            5,
+            0,
+            1,
+            2
+        )
+
+        panel_layout.addLayout(grid)
+
+        root.addWidget(panel)
+
+        # =========================================================
+        # STYLE
+        # =========================================================
+
+        self.setStyleSheet("""
+
+        QWidget {
+            color: white;
+            font-family: Inter;
+            font-size: 14px;
+        }
+
+        /* =====================================================
+           PANEL
+        ===================================================== */
+
+        QFrame#controlPanel {
+            background: rgba(8, 15, 28, 220);
+
+            border: 1px solid rgba(0, 180, 255, 90);
+
+            border-radius: 24px;
+        }
+
+        /* =====================================================
+           TITLES
+        ===================================================== */
+
+        QLabel#pageTitle {
+            font-size: 34px;
+            font-weight: 800;
+
+            color: white;
+
+            letter-spacing: 2px;
+
+            padding-bottom: 12px;
+        }
+
+        QLabel#paramTitle {
+            color: rgb(0, 220, 255);
+
+            font-size: 11px;
+            font-weight: 800;
+
+            letter-spacing: 2px;
+
+            padding-left: 2px;
+        }
+
+        /* =====================================================
+           PARAMETER CARD
+        ===================================================== */
+
+        QFrame#paramCard {
+            background: rgba(14, 24, 38, 235);
+
+            border: 1px solid rgba(0, 200, 255, 70);
+
+            border-radius: 16px;
+        }
+
+        /* =====================================================
+           INPUTS
+        ===================================================== */
+
+        QDoubleSpinBox,
+        QSpinBox {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            padding-top: 6px;
+            padding-bottom: 2px;
+        }
+
+        /* =====================================================
+           SPINBOX BUTTONS
+        ===================================================== */
+
+        QDoubleSpinBox::up-button,
+        QSpinBox::up-button {
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+
+            width: 22px;
+
+            border: none;
+
+            background: transparent;
+
+            margin-right: 6px;
+        }
+
+        QDoubleSpinBox::down-button,
+        QSpinBox::down-button {
+            subcontrol-origin: border;
+            subcontrol-position: bottom right;
+
+            width: 22px;
+
+            border: none;
+
+            background: transparent;
+
+            margin-right: 6px;
+        }
+
+        QDoubleSpinBox::up-arrow,
+        QSpinBox::up-arrow {
+            image: url(assets/arrow_up_cyan.svg);
+
+            width: 14px;
+            height: 14px;
+        }
+
+        QDoubleSpinBox::down-arrow,
+        QSpinBox::down-arrow {
+            image: url(assets/arrow_down_cyan.svg);
+
+            width: 14px;
+            height: 14px;
+        }
+
+        /* =====================================================
+           BUTTONS
+        ===================================================== */
+
+        QPushButton {
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 110, 255, 220),
+                stop:1 rgba(0, 180, 255, 220)
+            );
+
+            border: 1px solid rgb(0, 220, 255);
+
+            border-radius: 14px;
+
+            color: white;
+
+            font-size: 14px;
+            font-weight: 700;
+
+            letter-spacing: 1px;
+
+            padding: 12px;
+        }
+
+        QPushButton:hover {
+            border: 1px solid rgb(100, 240, 255);
+
+            background: rgba(0, 180, 255, 255);
+        }
+
+        QPushButton:pressed {
+            padding-top: 14px;
+        }
+
+        /* =====================================================
+        SECONDARY ENGINEERING BUTTON
+        ===================================================== */
+
+        QPushButton#secondaryAction {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(255, 140, 0, 180),
+                stop:1 rgba(255, 180, 0, 180)
+            );
+
+            border: 1px solid rgb(255, 190, 50);
+
+            color: white;
+        }
+
+        QPushButton#secondaryAction:hover {
+
+            background: rgba(255, 170, 0, 220);
+
+            border: 1px solid rgb(255, 220, 120);
+        }
+
+        /* =====================================================
+        TOGGLE OFF
+        ===================================================== */
+
+        QPushButton#toggleButton:!checked {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(160, 20, 20, 220),
+                stop:1 rgba(220, 40, 40, 220)
+            );
+
+            border: 1px solid rgb(255, 80, 80);
+
+            color: white;
+        }
+
+        /* =====================================================
+        TOGGLE ON
+        ===================================================== */
+
+        QPushButton#toggleButton:checked {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 150, 90, 220),
+                stop:1 rgba(0, 210, 120, 220)
+            );
+
+            border: 1px solid rgb(120, 255, 180);
+
+            color: white;
+        }
+
+        """)
+
+        # =========================================================
+        # STATE
+        # =========================================================
+
+        self.state.changed.connect(
+            self._sync_from_state
+        )
+
+        self._sync_from_state()
+
+    # =============================================================
+    # PARAM CARD
+    # =============================================================
+
+    def create_param_widget(
+        self,
+        title: str,
+        widget: QWidget
+    ) -> QWidget:
+
+        container = QFrame()
+
+        container.setObjectName(
+            "paramCard"
+        )
+
+        layout = QVBoxLayout(container)
+
+        layout.setContentsMargins(
+            16,
+            12,
+            16,
+            12
+        )
+
+        layout.setSpacing(4)
+
+        label = QLabel(
+            title.upper()
+        )
+
+        label.setObjectName(
+            "paramTitle"
+        )
+
+        layout.addWidget(label)
+        layout.addWidget(widget)
+
+        return container
+
+    # =============================================================
+    # INLINE PARAM
+    # =============================================================
+
+    def create_inline_param(
+        self,
+        title: str,
+        widget: QWidget
+    ) -> QWidget:
+
+        container = QWidget()
+
+        layout = QVBoxLayout(container)
+
+        layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
+        layout.setSpacing(4)
+
+        label = QLabel(title)
+
+        label.setObjectName(
+            "paramTitle"
+        )
+
+        layout.addWidget(label)
+        layout.addWidget(widget)
+
+        return container
+    
+    def _update_toggle_texts(self):
+
+        self.btn_afterdrop.setText(
+            f"AFTERDROP • {'ON' if self.btn_afterdrop.isChecked() else 'OFF'}"
+        )
+
+        self.btn_clean.setText(
+            f"CLEAN • {'ON' if self.btn_clean.isChecked() else 'OFF'}"
+        )
+
+    # =============================================================
+    # TOGGLE CARD
+    # =============================================================
+
+    def create_toggle_widget(
+        self,
+        button: QPushButton
+    ) -> QWidget:
+
+        container = QFrame()
+
+        container.setObjectName(
+            "paramCard"
+        )
+
+        layout = QVBoxLayout(container)
+
+        layout.setContentsMargins(
+            18,
+            18,
+            18,
+            18
+        )
+
+        layout.addStretch()
+
+        layout.addWidget(button)
+
+        layout.addStretch()
+
+        return container
+
+    # =============================================================
+    # BACKGROUND
+    # =============================================================
+
+    def paintEvent(self, event):
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.SmoothPixmapTransform
+        )
+
+        scaled = self.bg.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        x = (
+            self.width() - scaled.width()
+        ) / 2
+
+        y = (
+            self.height() - scaled.height()
+        ) / 2
+
+        painter.drawPixmap(
+            int(x),
+            int(y),
+            scaled,
+        )
+
+        super().paintEvent(event)
+
+    # =============================================================
+    # STATE UPDATE
+    # =============================================================
+
+    @Slot()
+    def _sync_from_state(self) -> None:
+
+        p = self.state.params
+
+        widgets = [
+            (self.speed, p.speed),
+            (self.amount, p.droplet_amount),
+            (self.pause_ms, p.pause_ms),
+            (self.zhop, p.z_hop),
+            (self.zoffset, p.z_offset),
+        ]
+
+        for w, val in widgets:
+
+            w.blockSignals(True)
+
+            w.setValue(val)
+
+            w.blockSignals(False)
+
+        self.btn_afterdrop.blockSignals(True)
+
+        self.btn_afterdrop.setChecked(
+            bool(p.afterdrop)
+        )
+
+        self.btn_afterdrop.blockSignals(False)
+
+        self.btn_clean.blockSignals(True)
+
+        self.btn_clean.setChecked(
+            bool(p.clean)
+        )
+        
+        self.btn_clean.blockSignals(False)
+        self._update_toggle_texts()
 
 
     
