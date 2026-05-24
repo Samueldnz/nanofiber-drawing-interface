@@ -37,7 +37,6 @@ class Params:
     z_hop: float = 10.0              # mm
     pause_ms: int = 0                # ms (G4 P...)
     z_offset: float = 0.4            # mm
-    temperature: float = 200.0       # celsius
 
     afterdrop: bool = True
     clean: bool = True
@@ -61,12 +60,18 @@ class Params:
     fiber_width: float = 40.0             # W (mm)
     fiber_spacing: float = 1.0            # S (mm) distância entre fibras
 
+    current_temperature: float = 0.0
+    target_temperature: float = 25.0
+    temperature_status: str = "IDLE"
+    temperature_reporting_enabled: bool = False
+
 class SyringeEmptyError(Exception):
     pass
 
 class AppState(QObject):
     changed = Signal()
     log = Signal(str)
+    temperature_changed = Signal(float)
 
     def __init__(self) -> None:
         super().__init__()
@@ -136,6 +141,131 @@ class AppState(QObject):
 
         self.changed.emit()
 
+    # =========================================================
+    # TEMPERATURE
+    # =========================================================
+
+    def set_current_temperature(
+        self,
+        value: float
+    ):
+
+        self.params.current_temperature = float(value)
+
+        self.temperature_changed.emit(
+            float(value)
+        )
+
+        self.changed.emit()
+
+    def set_target_temperature(
+        self,
+        value: float
+    ):
+
+        self.params.target_temperature = float(value)
+
+        self.changed.emit()
+
+    def set_temperature_status(
+        self,
+        status: str
+    ):
+
+        self.params.temperature_status = str(status)
+
+        self.changed.emit()
+
+    # =========================================================
+    # TEMPERATURE PARSER
+    # =========================================================
+
+    def _parse_temperature(
+        self,
+        line: str
+    ):
+
+        """
+        Example:
+
+        ok T:31.4 /40.0 B:25.0 /0.0
+        """
+
+        import re
+
+        current_match = re.search(
+            r"T:([0-9]+(?:\.[0-9]+)?)",
+            line
+        )
+
+        if not current_match:
+            return
+
+        try:
+
+            current_temp = float(
+                current_match.group(1)
+            )
+
+        except Exception:
+            return
+
+        self.state.set_current_temperature(
+            current_temp
+        )
+
+        # =====================================================
+        # TARGET
+        # =====================================================
+
+        target_match = re.search(
+            r"T:[0-9]+(?:\.[0-9]+)?\s*/([0-9]+(?:\.[0-9]+)?)",
+            line
+        )
+
+        if target_match:
+
+            try:
+
+                target_temp = float(
+                    target_match.group(1)
+                )
+
+                self.state.set_target_temperature(
+                    target_temp
+                )
+
+            except Exception:
+                pass
+
+        # =====================================================
+        # STATUS
+        # =====================================================
+
+        target = float(
+            self.state.params.target_temperature
+        )
+
+        if target <= 0:
+
+            status = "IDLE"
+
+        elif abs(current_temp - target) < 1.0:
+
+            status = "STABLE"
+
+        elif current_temp < target:
+
+            status = "HEATING"
+
+        else:
+
+            status = "COOLING"
+
+        self.state.set_temperature_status(
+            status
+        )
+
 # ----------------------------- Drawing Worker -----------------------------
 
 class DrawingWorker(QObject):
@@ -179,8 +309,82 @@ class MachineController(QObject):
         self._pause_event.set()  # not paused
         self._stop_event = threading.Event()
 
+        # =========================================================
+        # SERIAL LISTENER
+        # =========================================================
+        self._serial_listener_thread = None
+        self._serial_listener_running = False
+
     def log(self, msg: str) -> None:
         self.state.log.emit(msg)
+
+    # =========================================================
+    # TEMPERATURE REPORTING
+    # =========================================================
+
+    def enable_temperature_reporting(
+        self,
+        interval_seconds: int = 2
+    ):
+
+        if not self.is_connected():
+            return
+
+        self.send_gcode(
+            f"M155 S{interval_seconds}"
+        )
+
+        self.state.params.temperature_reporting_enabled = True
+
+        self.log(
+            f"Temperature auto-report enabled ({interval_seconds}s)"
+        )
+
+    def is_connected(self) -> bool:
+
+        return (
+            self.ser is not None
+            and self.ser.is_open
+        )
+    
+    def disable_temperature_reporting(self):
+
+        if not self.is_connected():
+            return
+
+        self.send_gcode("M155 S0")
+
+        self.state.params.temperature_reporting_enabled = False
+
+        self.log(
+            "Temperature auto-report disabled"
+        )
+
+    # =========================================================
+    # SET TEMPERATURE
+    # =========================================================
+
+    def set_temperature(
+        self,
+        target: float
+    ):
+
+        target = max(
+            0.0,
+            min(50.0, float(target))
+        )
+
+        self.send_gcode(
+            f"M104 S{target:.1f}"
+        )
+
+        self.state.set_target_temperature(
+            target
+        )
+
+        self.log(
+            f"Target temperature set to {target:.1f} °C"
+        )
 
     # ---------- Project I/O ----------
     def save_project(self, path: str) -> None:
@@ -261,6 +465,74 @@ class MachineController(QObject):
                 continue
         return None
     
+    # =========================================================
+    # SERIAL LISTENER
+    # =========================================================
+
+    def _start_serial_listener(self):
+
+        if self._serial_listener_running:
+            return
+
+        self._serial_listener_running = True
+
+        self._serial_listener_thread = threading.Thread(
+            target=self._serial_listener_loop,
+            daemon=True
+        )
+
+        self._serial_listener_thread.start()
+
+        self.log(
+            "Serial listener started"
+        )
+
+
+    def _stop_serial_listener(self):
+
+        self._serial_listener_running = False
+
+        self.log(
+            "Serial listener stopped"
+        )
+
+
+    def _serial_listener_loop(self):
+
+        while self._serial_listener_running:
+
+            try:
+
+                if self.ser is None:
+                    time.sleep(0.1)
+                    continue
+
+                raw = self.ser.readline()
+
+                if not raw:
+                    continue
+
+                line = raw.decode(
+                    errors="ignore"
+                ).strip()
+
+                if not line:
+                    continue
+
+                # =================================================
+                # TEMPERATURE
+                # =================================================
+
+                self._parse_temperature(line)
+
+            except Exception as e:
+
+                self.log(
+                    f"Serial listener error: {e}"
+                )
+
+                time.sleep(0.2)
+    
     def connect(self, baudrate: int = 115200) -> bool:
         # Ensure pyserial is available in the current environment
         if serial is None:
@@ -302,6 +574,7 @@ class MachineController(QObject):
             self._send_and_wait_ok("G28", timeout_s=120.0)
 
             self.log("Homing done")
+            self._start_serial_listener()
             return True
         
         except Exception as e:
@@ -324,6 +597,7 @@ class MachineController(QObject):
         try:
             # Ensure any ongoing drawing process is safely stopped before closing the connection
             self.stop_drawing()
+            self._stop_serial_listener()
 
             # Close the serial connection if it is active
             if self.ser is not None:
@@ -387,6 +661,38 @@ class MachineController(QObject):
             f"Timeout waiting for ok after: {command}"
             + (f" (last: {last_nonempty})" if last_nonempty else "")
         )
+    
+    # =========================================================
+    # RAW GCODE SEND
+    # =========================================================
+
+    def send_gcode(
+        self,
+        command: str
+    ) -> None:
+
+        """
+        Non-blocking raw G-code sender.
+
+        Used for:
+        - M104
+        - M155
+        - telemetry
+        - non-critical commands
+        """
+
+        if self.ser is None:
+            raise RuntimeError(
+                "No connection to the printer"
+            )
+
+        self.ser.write(
+            (command + "\n").encode("utf-8")
+        )
+
+        self.ser.flush()
+
+        self.log(f"> {command}")
     
     # ---------- Drawing controls ----------
     def start_drawing(self) -> None:
@@ -1049,7 +1355,7 @@ class MachineController(QObject):
 
         send("G92 E0")
 
-        send(f"M109 S{float(self.state.params.temperature)}")
+        send(f"M109 S{float(self.state.params.target_temperature)}")
 
         # ---------------- active patterns ----------------
 
