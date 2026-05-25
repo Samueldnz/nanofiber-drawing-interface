@@ -12,6 +12,8 @@ import threading
 import math
 import re
 import queue
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
 
 try:
     import serial
@@ -35,17 +37,12 @@ class Params:
 
     # --- Motion / deposition ---
     speed: int = 1500                # mm/min
-    droplet_amount: float = 1.0      # E units
     z_hop: float = 10.0              # mm
     pause_ms: int = 0                # ms (G4 P...)
     z_offset: float = 0.4            # mm
 
     afterdrop: bool = True
     clean: bool = True
-
-    # --- Syringe bookkeeping ---
-    syringe_current_amount: float = 0.0
-    syringe_droplet_units: int = 5
 
     # --- CustomCentered safe bounds (seu retângulo seguro) ---
     safe_x_min: float = 0
@@ -90,15 +87,12 @@ class AppState(QObject):
         p = self.params
         return {
             "Speed": int(p.speed),
-            "Droplet Amount": float(p.droplet_amount),
             "Z-Hop": float(p.z_hop),
             "Pause (ms)": int(p.pause_ms),
             "Z-Offset": float(p.z_offset),
+
             "Afterdrop": bool(p.afterdrop),
             "Clean": bool(p.clean),
-
-            "Syringe Current Amount": float(p.syringe_current_amount),
-            "Syringe Droplet Units": int(p.syringe_droplet_units),
 
             "Safe X Min": float(p.safe_x_min),
             "Safe X Max": float(p.safe_x_max),
@@ -112,21 +106,48 @@ class AppState(QObject):
             "Fiber Length": float(p.fiber_length),
             "Fiber Width": float(p.fiber_width),
             "Fiber Spacing": float(p.fiber_spacing),
+
+            # =====================================================
+            # TEMPERATURE
+            # =====================================================
+
+            "Current Temperature": float(
+                p.current_temperature
+            ),
+
+            "Target Temperature": float(
+                p.target_temperature
+            ),
+
+            "Temperature Status": str(
+                p.temperature_status
+            ),
+
+            "Temperature Reporting Enabled": bool(
+                p.temperature_reporting_enabled
+            ),
         }
 
     def apply_project_dict(self, data: Dict[str, Any]) -> None:
         p = self.params
 
         p.speed = int(data.get("Speed", p.speed))
-        p.droplet_amount = float(data.get("Droplet Amount", p.droplet_amount))
         p.z_hop = float(data.get("Z-Hop", p.z_hop))
         p.pause_ms = int(data.get("Pause (ms)", p.pause_ms))
         p.z_offset = float(data.get("Z-Offset", p.z_offset))
-        p.afterdrop = bool(data.get("Afterdrop", p.afterdrop))
-        p.clean = bool(data.get("Clean", p.clean))
 
-        p.syringe_current_amount = float(data.get("Syringe Current Amount", p.syringe_current_amount))
-        p.syringe_droplet_units = int(data.get("Syringe Droplet Units", p.syringe_droplet_units))
+        p.afterdrop = str(
+            data.get(
+                "Afterdrop",
+                p.afterdrop
+            )
+        ).lower() == "true"
+        p.clean = str(
+            data.get(
+                "Clean",
+                p.clean
+            )
+        ).lower() == "true"
 
         p.safe_x_min = float(data.get("Safe X Min", p.safe_x_min))
         p.safe_x_max = float(data.get("Safe X Max", p.safe_x_max))
@@ -140,6 +161,38 @@ class AppState(QObject):
         p.fiber_length = float(data.get("Fiber Length", p.fiber_length))
         p.fiber_width = float(data.get("Fiber Width", p.fiber_width))
         p.fiber_spacing = float(data.get("Fiber Spacing", p.fiber_spacing))
+
+        # =====================================================
+        # TEMPERATURE
+        # =====================================================
+
+        p.current_temperature = float(
+            data.get(
+                "Current Temperature",
+                p.current_temperature
+            )
+        )
+
+        p.target_temperature = float(
+            data.get(
+                "Target Temperature",
+                p.target_temperature
+            )
+        )
+
+        p.temperature_status = str(
+            data.get(
+                "Temperature Status",
+                p.temperature_status
+            )
+        )
+
+        p.temperature_reporting_enabled = str(
+            data.get(
+                "Temperature Reporting Enabled",
+                p.temperature_reporting_enabled
+            )
+        ).lower() == "true"
 
         self.changed.emit()
 
@@ -375,63 +428,249 @@ class MachineController(QObject):
         )
 
     # ---------- Project I/O ----------
-    def save_project(self, path: str) -> None:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.state.to_project_dict(), f, indent=2)
-        self.log("Project saved")
+    def save_project(self, path: str) -> bool:
 
-    def load_project(self, path: str) -> None:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.state.apply_project_dict(data)
-        self.log("Loaded project")
+        try:
+
+            with open(
+                path,
+                "w",
+                encoding="utf-8"
+            ) as f:
+
+                json.dump(
+                    self.state.to_project_dict(),
+                    f,
+                    indent=2,
+                    sort_keys=False
+                )
+
+            self.log(
+                f"Project saved: {path}"
+            )
+
+            return True
+
+        except Exception as e:
+
+            self.log(
+                f"Failed to save project: {e}"
+            )
+
+            return False
+
+    def load_project(self, path: str) -> bool:
+
+        try:
+
+            with open(
+                path,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
+                data = json.load(f)
+
+            self.state.apply_project_dict(data)
+
+            self.log(
+                f"Loaded project: {path}"
+            )
+
+            return True
+
+        except Exception as e:
+
+            self.log(
+                f"Failed to load project: {e}"
+            )
+
+            return False
 
     # ---------- PDF ----------
-    def save_pdf(self, path: str) -> None:
+    def save_pdf(self, path: str) -> bool:
         p = self.state.params
         x_min, x_max, y_min, y_max, xc, yc = self._safe_center()
 
-        summary_dict = {
-            "Orientation": p.fiber_orientation,
-            "Speed": f"{p.speed} mm/min",
-            "Z-Offset": f"{p.z_offset} mm",
-            "Z-Hop": f"{p.z_hop} mm",
-            "Pause": f"{p.pause_ms} ms",
-            "Droplet Amount": f"{p.droplet_amount} (E units)",
-            "Afterdrop": "on" if p.afterdrop else "off",
-            "Clean": "on" if p.clean else "off",
+        sections = {
 
-            "Safe Area X": f"[{x_min}, {x_max}]",
-            "Safe Area Y": f"[{y_min}, {y_max}]",
-            "Safe Center": f"({xc:.2f}, {yc:.2f})",
+            "DRAW SETTINGS": {
 
-            "Fiber Length": f"{p.fiber_length} mm",
-            "Fiber Width": f"{p.fiber_width} mm",
-            "Fiber Spacing": f"{p.fiber_spacing} mm",
+                "Orientation":
+                    p.fiber_orientation,
 
-            "Syringe Current Amount": f"{p.syringe_current_amount}",
-            "Syringe Droplet Units": f"{p.syringe_droplet_units}",
+                "Speed":
+                    f"{p.speed} mm/min",
+
+                "Z-Offset":
+                    f"{p.z_offset} mm",
+
+                "Z-Hop":
+                    f"{p.z_hop} mm",
+
+                "Pause":
+                    f"{p.pause_ms} ms",
+
+                "Afterdrop":
+                    "on" if p.afterdrop else "off",
+
+                "Clean":
+                    "on" if p.clean else "off",
+            },
+
+            "SAFE AREA": {
+
+                "Safe Area X":
+                    f"[{x_min}, {x_max}]",
+
+                "Safe Area Y":
+                    f"[{y_min}, {y_max}]",
+
+                "Safe Center":
+                    f"({xc:.2f}, {yc:.2f})",
+            },
+
+            "FIBER CONFIGURATION": {
+
+                "Fiber Length":
+                    f"{p.fiber_length} mm",
+
+                "Fiber Width":
+                    f"{p.fiber_width} mm",
+
+                "Fiber Spacing":
+                    f"{p.fiber_spacing} mm",
+            },
+
+            "TEMPERATURE": {
+
+                "Current Temperature":
+                    f"{p.current_temperature:.1f} °C",
+
+                "Target Temperature":
+                    f"{p.target_temperature:.1f} °C",
+
+                "Temperature Status":
+                    str(p.temperature_status),
+            }
         }
 
-        c = canvas.Canvas(path)  # create PDF file
+        try:
 
-        c.setFont("Helvetica-Bold", 24)  # set title font
-        c.drawString(40, 800, "Project Summary")  # draw title at top
-        c.setFont("Helvetica", 14)  # set font for content
+            c = canvas.Canvas(
+                    path,
+                    pagesize=A4
+                ) # create PDF file
 
-        y = 760  # starting vertical position (below title)
+            c.setFont("Helvetica-Bold", 24)  # set title font
+            c.drawString(40, 810, "Project Summary") # draw title at top
+            c.setFont("Helvetica", 11)
 
-        for k, v in summary_dict.items():
-            c.drawString(40, y, f"{k}: {v}")  # write one line (key: value)
-            y -= 24  # move down for next line
+            c.drawString(
+                40,
+                790,
+                datetime.now().strftime(
+                    "Generated on %Y-%m-%d %H:%M:%S"
+                )
+            )
 
-            if y < 60:  # if near bottom of page
-                c.showPage()  # create new page
-                c.setFont("Helvetica", 14)  # reset font after page break
-                y = 800  # reset position to top
+            c.setFont("Helvetica", 14)  # set font for content
 
-        c.save()  # finalize and save PDF file
-        self.log("PDF saved")  # log message
+            y = 750 # starting vertical position (below title)
+
+            for section_name, items in sections.items():
+
+                c.setFont(
+                    "Helvetica-Bold",
+                    16
+                )
+
+                c.drawString(
+                    40,
+                    y,
+                    section_name
+                )
+
+                y -= 28
+
+                c.setFont(
+                    "Helvetica",
+                    13
+                )
+
+                for k, v in items.items():
+
+                    c.drawString(
+                        56,
+                        y,
+                        f"{k:<24} {v}"
+                    )
+
+                    y -= 22
+
+                    if y < 60:
+
+                        c.showPage()
+
+                        c.setFont(
+                            "Helvetica-Bold",
+                            20
+                        )
+
+                        c.drawString(
+                            40,
+                            810,
+                            "Project Summary"
+                        )
+
+                        c.setFont(
+                            "Helvetica",
+                            11
+                        )
+
+                        c.drawString(
+                            40,
+                            790,
+                            datetime.now().strftime(
+                                "Generated on %Y-%m-%d %H:%M:%S"
+                            )
+                        )
+
+                        c.setFont(
+                            "Helvetica-Bold",
+                            16
+                        )
+
+                        c.drawString(
+                            40,
+                            740,
+                            section_name
+                        )
+
+                        c.setFont(
+                            "Helvetica",
+                            13
+                        )
+
+                        y = 720
+
+                y -= 14
+
+            c.save()
+
+            self.log(
+                f"PDF saved: {path}"
+            )
+
+            return True
+        
+        except Exception as e:
+
+            self.log(
+                f"Failed to save PDF: {e}"
+            )
+
+            return False
 
         # ---------- Serial ----------
     def _find_printer_port(self, baudrate: int = 115200) -> Optional[str]:
