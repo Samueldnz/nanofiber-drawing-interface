@@ -1031,22 +1031,22 @@ class MainWindow(QMainWindow):
         self.page_draw_settings = DrawSettingsPage(self)
         self.page_temperature = TemperaturePage(self)
         self.page_summary = SummaryPage(self)
-        # self.page_connection = ConnectionPage(self)
+        self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
         self._add_page("Fiber Layout", self.page_fiber_layout)
         self._add_page("Draw Settings", self.page_draw_settings)
         self._add_page("Temperature", self.page_temperature)
         self._add_page("Summary", self.page_summary)
-        # self._add_page("Connection", self.page_connection)
+        self._add_page("Connection", self.page_connection)
 
         self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
 
         self._set_project_mode(False)
         self.sidebar.setCurrentRow(0)
 
-        # self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
-        # self.state.log.connect(self.page_connection.append_log)
+        self.controller.connection_changed.connect(self.page_connection.on_connection_changed)
+        self.state.log.connect(self.page_connection.append_log)
 
     def _add_page(
             self, 
@@ -4009,6 +4009,786 @@ class SummaryPage(QWidget):
             label.setText(
                 values.get(key, "--")
             )
+
+    def paintEvent(self, event):
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.SmoothPixmapTransform
+        )
+
+        scaled = self.bg.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        x = (
+            self.width() - scaled.width()
+        ) / 2
+
+        y = (
+            self.height() - scaled.height()
+        ) / 2
+
+        painter.drawPixmap(
+            int(x),
+            int(y),
+            scaled,
+        )
+
+        super().paintEvent(event)
+
+class ConnectionPage(QWidget):
+
+    def __init__(self, mw: MainWindow) -> None:
+        super().__init__()
+
+        self.mw = mw
+        self.controller = mw.controller
+
+        self.bg = QPixmap("assets/layout_bg.png")
+
+        # =====================================================
+        # ROOT
+        # =====================================================
+
+        root = QVBoxLayout(self)
+
+        root.setContentsMargins(
+            24,
+            24,
+            24,
+            24
+        )
+
+        root.setSpacing(24)
+
+        # =====================================================
+        # HEADER
+        # =====================================================
+
+        header = QHBoxLayout()
+
+        title = QLabel("CONNECTION")
+
+        title.setObjectName(
+            "pageTitle"
+        )
+
+        header.addWidget(title)
+
+        header.addStretch()
+
+        self.btn_info = QPushButton("INFO")
+
+        self.btn_info.setObjectName(
+            "infoButton"
+        )
+
+        self.btn_info.setFixedSize(
+            120,
+            48
+        )
+
+        self.btn_info.clicked.connect(
+            self.mw.show_info
+        )
+
+        header.addWidget(
+            self.btn_info
+        )
+
+        root.addLayout(header)
+
+        # =====================================================
+        # CONNECTION PANEL
+        # =====================================================
+
+        conn_panel = QFrame()
+
+        conn_panel.setObjectName(
+            "connectionPanel"
+        )
+
+        conn_layout = QHBoxLayout(conn_panel)
+
+        conn_layout.setContentsMargins(
+            24,
+            18,
+            24,
+            18
+        )
+
+        conn_layout.setSpacing(14)
+
+        self.btn_connect = QPushButton(
+            "CONNECT"
+        )
+
+        self.btn_connect.setObjectName(
+            "connectButton"
+        )
+
+        self.btn_connect.setFixedSize(
+            180,
+            56
+        )
+
+        self.btn_disconnect = QPushButton(
+            "DISCONNECT"
+        )
+
+        self.btn_disconnect.setObjectName(
+            "disconnectButton"
+        )
+
+        self.btn_disconnect.setFixedSize(
+            180,
+            56
+        )
+
+        self.btn_disconnect.setEnabled(False)
+
+        self.lbl_state = QLabel(
+            "DISCONNECTED"
+        )
+
+        self.lbl_state.setObjectName(
+            "statusDisconnected"
+        )
+
+        conn_layout.addWidget(
+            self.btn_disconnect
+        )
+
+        conn_layout.addWidget(
+            self.btn_connect
+        )
+
+        conn_layout.addStretch()
+
+        conn_layout.addWidget(
+            self.lbl_state
+        )
+
+        self.status_dot = QFrame()
+
+        self.status_dot.setObjectName(
+            "statusDotDisconnected"
+        )
+
+        self.status_dot.setFixedSize(
+            14,
+            14
+        )
+
+        conn_layout.addWidget(
+            self.status_dot
+        )
+
+        conn_layout.addStretch()
+
+        root.addWidget(conn_panel)
+
+        # =====================================================
+        # LOG PANEL
+        # =====================================================
+
+        log_panel = QFrame()
+
+        log_panel.setObjectName(
+            "logPanel"
+        )
+
+        log_layout = QVBoxLayout(log_panel)
+
+        log_layout.setContentsMargins(
+            18,
+            18,
+            18,
+            18
+        )
+
+        log_layout.setSpacing(12)
+
+        log_title = QLabel(
+            "MACHINE TELEMETRY"
+        )
+
+        log_title.setObjectName(
+            "sectionTitle"
+        )
+
+        log_layout.addWidget(log_title)
+
+        self.text = QTextEdit()
+
+        self.text.setReadOnly(True)
+
+        self.text.setPlaceholderText(
+            "Machine logs and telemetry..."
+        )
+
+        self.text.setObjectName(
+            "logViewer"
+        )
+
+        log_layout.addWidget(
+            self.text,
+            1
+        )
+
+        log_panel.setMaximumHeight(
+            420
+        )
+
+        root.addWidget(log_panel)
+
+        # =====================================================
+        # ACTION BUTTONS
+        # =====================================================
+
+        actions = QWidget()
+
+        actions_layout = QHBoxLayout(actions)
+
+        actions_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
+        actions_layout.setSpacing(16)
+
+        self.btn_start = QPushButton(
+            "DO SCIENCE"
+        )
+
+        self.btn_start.setObjectName(
+            "startButton"
+        )
+
+        self.btn_start.setFixedSize(
+            240,
+            52
+        )
+
+        self.btn_pause = QPushButton(
+            "PAUSE"
+        )
+
+        self.btn_pause.setObjectName(
+            "pauseButton"
+        )
+
+        self.btn_pause.setFixedSize(
+            240,
+            52
+        )
+
+        self.btn_pause.setEnabled(False)
+
+        self.btn_abort = QPushButton(
+            "EMERGENCY STOP"
+        )
+
+        self.btn_abort.setObjectName(
+            "abortButton"
+        )
+
+        self.btn_abort.setFixedSize(
+            240,
+            52
+        )
+        
+        actions_layout.addStretch()
+
+        actions_layout.addWidget(
+            self.btn_abort
+        )
+
+        actions_layout.addStretch()
+
+        actions_layout.addWidget(
+            self.btn_pause
+        )
+
+        actions_layout.addStretch()
+
+        actions_layout.addWidget(
+            self.btn_start
+        )
+
+        actions_layout.addStretch()
+
+        root.addWidget(actions)
+
+        # =====================================================
+        # CONNECTIONS
+        # =====================================================
+
+        self.btn_connect.clicked.connect(
+            self._connect
+        )
+
+        self.btn_disconnect.clicked.connect(
+            self._disconnect
+        )
+
+        self.btn_start.clicked.connect(
+            self._start
+        )
+
+        self.btn_pause.clicked.connect(
+            self.controller.toggle_pause
+        )
+
+        self.btn_abort.clicked.connect(
+            self.controller.emergency_stop
+        )
+
+        self.controller.drawing_running_changed.connect(
+            self._on_drawing_running
+        )
+
+        self.controller.drawing_paused_changed.connect(
+            self._on_drawing_paused
+        )
+
+        # =====================================================
+        # STYLE
+        # =====================================================
+
+        self.setStyleSheet("""
+
+        QWidget {
+
+            font-family: Inter;
+        }
+
+        QMessageBox {
+
+            background: rgb(14, 20, 32);
+
+            color: white;
+        }
+
+        QMessageBox QLabel {
+
+            color: white;
+            font-size: 14px;
+        }
+
+        QMessageBox QPushButton {
+
+            min-width: 90px;
+
+            min-height: 30px;
+
+            padding: 2px 10px;
+
+            background: rgba(20, 28, 44, 240);
+
+            border: 1px solid rgb(0, 180, 255);
+
+            border-radius: 10px;
+
+            color: white;
+
+            font-weight: 600;
+        }
+
+        QMessageBox QPushButton:hover {
+
+            background: rgba(0, 180, 255, 60);
+        }             
+
+        QLabel#pageTitle {
+
+            font-size: 36px;
+
+            font-weight: 900;
+
+            color: white;
+
+            letter-spacing: 2px;
+        }
+
+        QLabel#sectionTitle {
+
+            color: rgb(0, 220, 255);
+
+            font-size: 12px;
+
+            font-weight: 800;
+
+            letter-spacing: 3px;
+        }
+
+        QFrame#connectionPanel,
+        QFrame#logPanel {
+
+            background: rgba(8, 15, 28, 220);
+
+            border: 1px solid rgba(0, 180, 255, 80);
+
+            border-radius: 24px;
+        }
+
+        QLabel#statusDisconnected {
+
+            color: rgb(255, 80, 80);
+
+            font-size: 16px;
+
+            font-weight: 800;
+
+            letter-spacing: 2px;
+        }
+                           
+        QFrame#statusDotDisconnected {
+
+            background: rgb(255, 70, 70);
+
+            border-radius: 7px;
+        }
+
+        QFrame#statusDotConnected {
+
+            background: rgb(0, 255, 140);
+
+            border-radius: 7px;
+        }
+                           
+        QLabel#statusConnected {
+
+            color: rgb(0, 255, 140);
+
+            font-size: 16px;
+
+            font-weight: 800;
+
+            letter-spacing: 2px;
+        }
+
+        QTextEdit#logViewer {
+
+            background: rgba(3, 10, 20, 220);
+            
+            border: 1px solid rgba(0, 180, 255, 40);
+
+            border-radius: 18px;
+
+            padding: 14px;
+
+            font-size: 13px;
+
+            color: white;
+        }
+
+        QTextEdit#logViewer QScrollBar:vertical {
+
+            background: transparent;
+
+            width: 10px;
+
+            margin: 8px;
+        }
+
+        QTextEdit#logViewer QScrollBar::handle:vertical {
+
+            background: rgba(0, 180, 255, 120);
+
+            border-radius: 5px;
+
+            min-height: 40px;
+        }
+
+        QPushButton {
+
+            border-radius: 18px;
+
+            font-size: 14px;
+
+            font-weight: 800;
+
+            letter-spacing: 2px;
+        }
+
+        QPushButton#connectButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 150, 90, 220),
+                stop:1 rgba(0, 210, 120, 220)
+            );
+
+            border: 1px solid rgb(120, 255, 180);
+
+            color: white;
+        }
+
+        QPushButton#connectButton:hover {
+
+            background: rgba(20, 170, 90, 255);
+        }
+
+        QPushButton#disconnectButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(160, 20, 20, 220),
+                stop:1 rgba(220, 40, 40, 220)
+            );
+
+            border: 1px solid rgb(255, 80, 80);
+
+            color: white;
+        }
+
+        QPushButton#disconnectButton:hover {
+
+            background: rgba(170, 20, 28, 255);
+        }
+
+        QPushButton#startButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 150, 90, 220),
+                stop:1 rgba(0, 210, 120, 220)
+            );
+
+            border: 1px solid rgb(120, 255, 180);
+
+            color: white;
+        }
+                           
+        QPushButton#startButton:hover {
+
+            background: rgba(20, 170, 90, 255);
+        }
+
+        QPushButton#pauseButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(255, 140, 0, 180),
+                stop:1 rgba(255, 180, 0, 180)
+            );
+
+            border: 1px solid rgb(255, 190, 50);
+
+            color: white;
+        }
+                           
+        QPushButton#pauseButton:hover {
+            background: rgba(255, 170, 0, 220);
+
+            border: 1px solid rgb(255, 220, 120);
+        }
+
+        QPushButton#abortButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(160, 20, 20, 220),
+                stop:1 rgba(220, 40, 40, 220)
+            );
+
+            border: 1px solid rgb(255, 80, 80);
+
+            color: white;
+        }
+                           
+        QPushButton#abortButton:hover {
+            background: rgba(170, 20, 28, 255);
+        }
+
+        QPushButton#infoButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 110, 255, 220),
+                stop:1 rgba(0, 180, 255, 220)
+            );
+
+            border: 1px solid rgb(0, 220, 255);
+
+            border-radius: 14px;
+
+            color: white;
+
+            font-size: 13px;
+
+            font-weight: 700;
+        }
+        
+        QPushButton#infoButton:hover {
+            border: 1px solid rgb(100, 240, 255);
+
+            background: rgba(0, 180, 255, 255);
+        }
+                           
+        
+
+        """)
+
+    @Slot()
+    def _connect(self) -> None:
+        ok = self.controller.connect()
+        if not ok:
+            QMessageBox.critical(self, "Error", "Could not connect to the printer")
+
+    @Slot()
+    def _disconnect(self) -> None:
+        ok = self.controller.disconnect()
+        if not ok:
+            QMessageBox.critical(self, "Error", "Could not disconnect from the printer")
+
+    @Slot(bool)
+    def on_connection_changed(
+        self,
+        connected: bool
+    ) -> None:
+
+        if connected:
+
+            self.lbl_state.setText(
+                "CONNECTED"
+            )
+
+            self.lbl_state.setObjectName(
+                "statusConnected"
+            )
+
+            self.status_dot.setObjectName(
+                "statusDotConnected"
+            )
+
+            self.status_dot.style().unpolish(
+                self.status_dot
+            )
+
+            self.status_dot.style().polish(
+                self.status_dot
+            )
+
+            self.lbl_state.style().unpolish(
+                self.lbl_state
+            )
+
+            self.lbl_state.style().polish(
+                self.lbl_state
+            )
+
+            self.btn_connect.setEnabled(False)
+
+            self.btn_disconnect.setEnabled(True)
+
+        else:
+
+            self.lbl_state.setText(
+                "DISCONNECTED"
+            )
+
+            self.lbl_state.setObjectName(
+                "statusDisconnected"
+            )
+
+            self.status_dot.setObjectName(
+                "statusDotDisconnected"
+            )
+
+            self.status_dot.style().unpolish(
+                self.status_dot
+            )
+
+            self.status_dot.style().polish(
+                self.status_dot
+            )
+
+            self.lbl_state.style().unpolish(
+                self.lbl_state
+            )
+
+            self.lbl_state.style().polish(
+                self.lbl_state
+            )
+
+            self.btn_connect.setEnabled(True)
+
+            self.btn_disconnect.setEnabled(False)
+
+    @Slot()
+    def _start(self) -> None:
+
+        self.controller.start_drawing()
+
+    @Slot(bool)
+    def _on_drawing_running(
+        self,
+        running: bool
+    ) -> None:
+
+        self.btn_start.setEnabled(
+            not running
+        )
+
+        self.btn_pause.setEnabled(
+            running
+        )
+
+        if not running:
+
+            self.btn_pause.setText(
+                "PAUSE"
+            )
+
+    @Slot(bool)
+    def _on_drawing_paused(
+        self,
+        paused: bool
+    ) -> None:
+
+        self.btn_pause.setText(
+            "RESUME" if paused else "PAUSE"
+        )
+
+    @Slot(str)
+    def append_log(
+        self,
+        msg: str
+    ) -> None:
+
+        self.text.append(msg)
 
     def paintEvent(self, event):
 
