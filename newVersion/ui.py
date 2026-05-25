@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QStackedWidget, QMessageBox, QFileDialog,
     QComboBox, QSlider, QDoubleSpinBox, QGroupBox, QGridLayout,
-    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect, QSizePolicy
+    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect, QSizePolicy,  QScrollArea
 )
 
 from PySide6.QtMultimedia import (
@@ -1029,14 +1029,14 @@ class MainWindow(QMainWindow):
         self.page_fiber_layout = FiberLayoutPage(self)
         self.page_draw_settings = DrawSettingsPage(self)
         self.page_temperature = TemperaturePage(self)
-        # self.page_summary = SummaryPage(self)
+        self.page_summary = SummaryPage(self)
         # self.page_connection = ConnectionPage(self)
         
         self._add_page("Welcome", self.page_welcome)
         self._add_page("Fiber Layout", self.page_fiber_layout)
         self._add_page("Draw Settings", self.page_draw_settings)
         self._add_page("Temperature", self.page_temperature)
-        # self._add_page("Summary", self.page_summary)
+        self._add_page("Summary", self.page_summary)
         # self._add_page("Connection", self.page_connection)
 
         self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
@@ -3328,6 +3328,658 @@ class TemperaturePage(QWidget):
                 letter-spacing: 2px;
             }}
         ''')
+
+    def paintEvent(self, event):
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.SmoothPixmapTransform
+        )
+
+        scaled = self.bg.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        x = (
+            self.width() - scaled.width()
+        ) / 2
+
+        y = (
+            self.height() - scaled.height()
+        ) / 2
+
+        painter.drawPixmap(
+            int(x),
+            int(y),
+            scaled,
+        )
+
+        super().paintEvent(event)
+
+
+# =========================================================
+# SUMMARY PAGE
+# =========================================================
+
+class SummaryPage(QWidget):
+
+    def __init__(self, mw: MainWindow) -> None:
+        super().__init__()
+
+        self.mw = mw
+
+        self.state = mw.state
+        self.controller = mw.controller
+
+        self.bg = QPixmap(
+            "assets/layout_bg.png"
+        )
+
+        # =====================================================
+        # ROOT
+        # =====================================================
+
+        root = QVBoxLayout(self)
+
+        root.setContentsMargins(
+            24,
+            24,
+            24,
+            24
+        )
+
+        root.setSpacing(22)
+
+        # =====================================================
+        # TITLE
+        # =====================================================
+
+        title = QLabel("SUMMARY")
+
+        title.setObjectName(
+            "pageTitle"
+        )
+
+        root.addWidget(title)
+
+        # =====================================================
+        # SCROLL AREA
+        # =====================================================
+
+        scroll = QScrollArea()
+
+        scroll.setWidgetResizable(True)
+
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+
+        content = QWidget()
+
+        self.content_layout = QVBoxLayout(content)
+
+        self.content_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
+        self.content_layout.setSpacing(18)
+
+        scroll.setWidget(content)
+
+        root.addWidget(scroll, 0)
+        scroll.setMaximumHeight(480)
+
+        # =====================================================
+        # DRAW SETTINGS
+        # =====================================================
+
+        self.draw_section = self.create_section(
+            "DRAW SETTINGS"
+        )
+
+        self.draw_items = {}
+
+        draw_params = [
+            ("Speed", "speed"),
+            ("Droplet Amount", "droplet_amount"),
+            ("Pause", "pause_ms"),
+            ("Z-Hop", "z_hop"),
+            ("Z-Offset", "z_offset"),
+            ("Afterdrop", "afterdrop"),
+            ("Clean", "clean"),
+        ]
+
+        for label, key in draw_params:
+
+            row, value = self.create_summary_item(
+                label
+            )
+
+            self.draw_section.layout().addWidget(row)
+
+            self.draw_items[key] = value
+
+        self.content_layout.addWidget(
+            self.draw_section
+        )
+
+        # =====================================================
+        # TEMPERATURE
+        # =====================================================
+
+        self.temp_section = self.create_section(
+            "TEMPERATURE"
+        )
+
+        self.temp_items = {}
+
+        temp_params = [
+            ("Current Temperature", "current_temperature"),
+            ("Target Temperature", "target_temperature"),
+            ("Status", "temperature_status"),
+        ]
+
+        for label, key in temp_params:
+
+            row, value = self.create_summary_item(
+                label
+            )
+
+            self.temp_section.layout().addWidget(row)
+
+            self.temp_items[key] = value
+
+        self.content_layout.addWidget(
+            self.temp_section
+        )
+
+        # =====================================================
+        # DRAW CONFIGURATION
+        # =====================================================
+
+        self.config_section = self.create_section(
+            "DRAW CONFIGURATION"
+        )
+
+        self.config_items = {}
+
+        config_params = [
+            ("Fiber Orientation", "fiber_orientation"),
+            ("Fiber Length", "fiber_length"),
+            ("Fiber Width", "fiber_width"),
+            ("Fiber Spacing", "fiber_spacing"),
+            ("Start X", "start_x"),
+            ("Start Y", "start_y"),
+        ]
+
+        for label, key in config_params:
+
+            row, value = self.create_summary_item(
+                label
+            )
+
+            self.config_section.layout().addWidget(row)
+
+            self.config_items[key] = value
+
+        self.content_layout.addWidget(
+            self.config_section
+        )
+
+        self.content_layout.addStretch()
+
+        # =====================================================
+        # ACTION BUTTONS
+        # =====================================================
+
+        actions = QWidget()
+
+        actions_layout = QHBoxLayout(actions)
+
+        actions_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
+        actions_layout.setSpacing(14)
+
+        self.btn_load = QPushButton(
+            "LOAD"
+        )
+
+        self.btn_load.setObjectName(
+            "loadButton"
+        )
+
+        self.btn_load.setFixedSize(
+            170,
+            54
+        )
+
+        self.btn_save_pdf = QPushButton(
+            "SAVE PDF"
+        )
+
+        self.btn_save_pdf.setObjectName(
+            "pdfButton"
+        )
+
+        self.btn_save_pdf.setFixedSize(
+            190,
+            54
+        )
+
+        self.btn_save_project = QPushButton(
+            "SAVE PROJECT"
+        )
+
+        self.btn_save_project.setObjectName(
+            "saveButton"
+        )
+
+        self.btn_save_project.setFixedSize(
+            240,
+            54
+        )
+
+        actions_layout.addWidget(
+            self.btn_load
+        )
+
+        actions_layout.addWidget(
+            self.btn_save_pdf
+        )
+
+        actions_layout.addWidget(
+            self.btn_save_project
+        )
+
+        actions_layout.addStretch()
+
+        root.addWidget(actions)
+
+        # =====================================================
+        # NEXT BUTTON ROW
+        # =====================================================
+
+        next_row = QWidget()
+
+        next_layout = QHBoxLayout(next_row)
+
+        next_layout.setContentsMargins(
+            0,
+            0,
+            10,
+            0
+        )
+
+        self.btn_next = QPushButton(
+            "NEXT  →"
+        )
+
+        self.btn_next.setObjectName(
+            "nextButton"
+        )
+
+        self.btn_next.setFixedSize(
+            220,
+            54
+        )
+
+        next_layout.addStretch()
+
+        next_layout.addWidget(
+            self.btn_next
+        )
+
+        root.addWidget(next_row)
+        # =====================================================
+        # STYLE
+        # =====================================================
+
+        self.setStyleSheet("""
+
+        QWidget {
+            color: white;
+            font-family: Inter;
+        }
+
+        QLabel#pageTitle {
+
+            font-size: 36px;
+
+            font-weight: 900;
+
+            letter-spacing: 3px;
+
+            color: white;
+        }
+
+        QScrollArea {
+
+            background: transparent;
+
+            border: none;
+        }
+
+        QScrollArea > QWidget > QWidget {
+
+            background: transparent;
+        }
+                           
+        QScrollBar:vertical {
+
+            background: transparent;
+
+            width: 10px;
+
+            margin: 0px;
+        }
+
+        QScrollBar::handle:vertical {
+
+            background: rgba(0, 180, 255, 90);
+
+            border-radius: 5px;
+
+            min-height: 40px;
+        }
+
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {
+
+            height: 0px;
+        }
+
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {
+
+            background: transparent;
+        }
+
+        QFrame#summarySection {
+
+            background: rgba(8, 15, 28, 220);
+
+            border: 1px solid rgba(0, 180, 255, 70);
+
+            border-radius: 22px;
+        }
+
+        QLabel#sectionTitle {
+
+            color: rgb(0, 220, 255);
+
+            font-size: 14px;
+
+            font-weight: 800;
+
+            letter-spacing: 2px;
+        }
+
+        QFrame#summaryItem {
+
+            background: rgba(4, 10, 20, 180);
+
+            border: 1px solid rgba(120, 180, 255, 40);
+
+            border-radius: 14px;
+        }
+
+        QLabel#itemLabel {
+
+            color: rgb(180, 200, 220);
+
+            font-size: 14px;
+        }
+
+        QLabel#itemValue {
+
+            color: rgb(235, 240, 248);
+
+            font-size: 15px;
+
+            font-weight: 600;
+        }
+
+        QPushButton {
+
+            border-radius: 18px;
+
+            font-size: 14px;
+
+            font-weight: 800;
+
+            letter-spacing: 2px;
+        }
+
+        QPushButton#loadButton {
+
+            background: rgba(22, 26, 34, 180);
+
+            border: 1px solid rgba(110, 130, 160, 90);
+
+            color: rgb(210, 220, 235);
+        }
+
+        QPushButton#loadButton:hover {
+
+            background: rgba(70, 90, 120, 80);
+        }
+
+        QPushButton#pdfButton {
+
+            background: rgba(42, 24, 6, 220);
+
+            border: 1px solid rgba(255, 170, 40, 180);
+
+            color: rgb(255, 230, 190);
+        }
+
+        QPushButton#pdfButton:hover {
+
+            background: rgba(255, 170, 40, 60);
+        }
+
+        QPushButton#saveButton {
+
+            background: rgba(20, 120, 60, 220);
+
+            border: 1px solid rgb(80, 255, 160);
+
+            color: white;
+        }
+
+        QPushButton#saveButton:hover {
+
+            background: rgba(40, 180, 90, 240);
+        }
+
+        QPushButton#nextButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 110, 255, 220),
+                stop:1 rgba(0, 180, 255, 220)
+            );
+
+            border: 1px solid rgb(0, 220, 255);
+
+            color: white;
+        }
+
+        QPushButton#nextButton:hover {
+
+            background: rgb(0, 140, 255);
+        }
+
+        """)
+
+        self.state.changed.connect(
+            self.sync_from_state
+        )
+
+        self.sync_from_state()
+
+    def create_section(
+        self,
+        title: str
+    ) -> QFrame:
+
+        section = QFrame()
+
+        section.setObjectName(
+            "summarySection"
+        )
+
+        layout = QVBoxLayout(section)
+
+        layout.setContentsMargins(
+            22,
+            20,
+            22,
+            20
+        )
+
+        layout.setSpacing(14)
+
+        title_label = QLabel(title)
+
+        title_label.setObjectName(
+            "sectionTitle"
+        )
+
+        layout.addWidget(title_label)
+
+        return section
+
+    def create_summary_item(
+        self,
+        label: str
+    ):
+
+        row = QFrame()
+
+        row.setObjectName(
+            "summaryItem"
+        )
+
+        layout = QHBoxLayout(row)
+
+        layout.setContentsMargins(
+            18,
+            12,
+            18,
+            12
+        )
+
+        label_widget = QLabel(label)
+
+        label_widget.setObjectName(
+            "itemLabel"
+        )
+
+        value_widget = QLabel("--")
+
+        value_widget.setObjectName(
+            "itemValue"
+        )
+
+        layout.addWidget(label_widget)
+
+        layout.addStretch()
+
+        layout.addWidget(value_widget)
+
+        return row, value_widget
+
+    @Slot()
+    def sync_from_state(self):
+
+        p = self.state.params
+
+        values = {
+
+            "speed":
+                f"{p.speed} mm/min",
+
+            "droplet_amount":
+                str(p.droplet_amount),
+
+            "pause_ms":
+                f"{p.pause_ms} ms",
+
+            "z_hop":
+                f"{p.z_hop:.2f} mm",
+
+            "z_offset":
+                f"{p.z_offset:.3f} mm",
+
+            "afterdrop":
+                "ON" if p.afterdrop else "OFF",
+
+            "clean":
+                "ON" if p.clean else "OFF",
+
+            "current_temperature":
+                f"{p.current_temperature:.1f} °C",
+
+            "target_temperature":
+                f"{p.target_temperature:.1f} °C",
+
+            "temperature_status":
+                str(p.temperature_status),
+
+            "fiber_orientation":
+                str(p.fiber_orientation),
+
+            "fiber_length":
+                f"{p.fiber_length:.1f} mm",
+
+            "fiber_width":
+                f"{p.fiber_width:.1f} mm",
+
+            "fiber_spacing":
+                f"{p.fiber_spacing:.2f} mm",
+
+            "start_x":
+                f"{p.start_x:.1f} mm",
+
+            "start_y":
+                f"{p.start_y:.1f} mm",
+        }
+
+        for key, label in self.draw_items.items():
+
+            label.setText(
+                values.get(key, "--")
+            )
+
+        for key, label in self.temp_items.items():
+
+            label.setText(
+                values.get(key, "--")
+            )
+
+        for key, label in self.config_items.items():
+
+            label.setText(
+                values.get(key, "--")
+            )
 
     def paintEvent(self, event):
 
