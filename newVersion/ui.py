@@ -27,6 +27,7 @@ from PySide6.QtMultimedia import (
 )
 
 from backend import AppState, MachineController
+from pathlib import Path
 
 BG_PRIMARY = "#0F172A"
 BG_SECONDARY = "#1E293B"
@@ -1066,7 +1067,7 @@ class MainWindow(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemIsEnabled if enabled else item.flags() & ~Qt.ItemIsEnabled)
 
     def go(self, name: str) -> None:
-        mapping = {"Welcome": 0, "Fiber Layout": 1, "Draw Settings": 2, "Temperature": 3, "Connection": 4, "Log": 5}
+        mapping = {"Welcome": 0, "Fiber Layout": 1, "Draw Settings": 2, "Temperature": 3, "Summary": 4, "Log": 5}
         self.sidebar.setCurrentRow(mapping[name])
         # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
 
@@ -1077,16 +1078,35 @@ class MainWindow(QMainWindow):
         self.controller.log("New project")
     
     def load_project_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Load Project", "", "JSON files (*.json)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Project",
+            "",
+            "JSON files (*.json)"
+        )
+
         if not path:
             return
-        try:
-            self.controller.load_project(path)
-            self._set_project_mode(True)
-            self.setWindowTitle(f"Nanofiber Machine - {path.split('/')[-1]}")
-            self.go("Draw")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not load project:\n{e}")
+
+        ok = self.controller.load_project(path)
+
+        if not ok:
+
+            QMessageBox.critical(
+                self,
+                "Error",
+                "Could not load project."
+            )
+
+            return
+
+        self._set_project_mode(True)
+
+        self.setWindowTitle(
+            f"Nanofiber Machine - {Path(path).name}"
+        )
+
+        self.go("Draw")
 
     def save_project_dialog(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Save Project", "", "JSON files (*.json)")
@@ -1094,10 +1114,14 @@ class MainWindow(QMainWindow):
             return
         if not path.lower().endswith(".json"):
             path += ".json"
-        try:
-            self.controller.save_project(path)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not save project:\n{e}")
+        ok = self.controller.save_project(path)
+
+        if not ok:
+            QMessageBox.critical(
+                self,
+                "Error",
+                "Could not save project."
+            )
 
     def save_pdf_dialog(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Save PDF", "", "PDF files (*.pdf)")
@@ -1105,10 +1129,11 @@ class MainWindow(QMainWindow):
             return
         if not path.lower().endswith(".pdf"):
             path += ".pdf"
-        try:
-            self.controller.save_pdf(path)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
+
+        ok = self.controller.save_pdf(path)
+
+        if not ok:
+            QMessageBox.critical(self, "Error", f"Could not save PDF")
 
     def show_info(self) -> None:
         self.player.stop()
@@ -2558,7 +2583,6 @@ class DrawSettingsPage(QWidget):
 
         widgets = [
             (self.speed, p.speed),
-            (self.amount, p.droplet_amount),
             (self.pause_ms, p.pause_ms),
             (self.zhop, p.z_hop),
             (self.zoffset, p.z_offset),
@@ -2927,6 +2951,8 @@ class TemperaturePage(QWidget):
 
         self.btn_next.setFixedHeight(54)
         self.btn_next.setFixedWidth(300)
+
+        self.btn_next.clicked.connect(lambda: self.mw.go("Summary"))
 
         next_container = QWidget()
 
@@ -3608,6 +3634,12 @@ class SummaryPage(QWidget):
 
         root.addWidget(actions)
 
+        self.btn_save_project.clicked.connect(self.mw.save_project_dialog)
+
+        self.btn_save_pdf.clicked.connect(self.mw.save_pdf_dialog)
+
+        self.btn_load.clicked.connect(self.mw.load_project_dialog)
+
         # =====================================================
         # NEXT BUTTON ROW
         # =====================================================
@@ -3916,9 +3948,6 @@ class SummaryPage(QWidget):
 
             "speed":
                 f"{p.speed} mm/min",
-
-            "droplet_amount":
-                str(p.droplet_amount),
 
             "pause_ms":
                 f"{p.pause_ms} ms",
