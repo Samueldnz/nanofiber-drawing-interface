@@ -261,6 +261,8 @@ class MachineController(QObject):
         self.state = state
         self.ser: Optional["serial.Serial"] = None  # type: ignore[name-defined]
 
+        self._is_retracted = False
+
         # drawing infra
         self._drawing_thread: Optional[QThread] = None
         self._worker: Optional[DrawingWorker] = None
@@ -268,6 +270,8 @@ class MachineController(QObject):
         self._pause_event = threading.Event()
         self._pause_event.set()  # not paused
         self._stop_event = threading.Event()
+        self._graceful_stop_requested = threading.Event()
+        self._pause_requested = threading.Event()
 
         # =========================================================
         # SERIAL LISTENER
@@ -997,6 +1001,8 @@ class MachineController(QObject):
 
         # Reset control flags (allow run, not stopped)
         self._stop_event.clear()
+        self._graceful_stop_requested.clear()
+        self._pause_requested.clear()
         self._pause_event.set()
 
         # Create worker thread and drawing worker
@@ -1039,18 +1045,31 @@ class MachineController(QObject):
         self.log("Finished")
 
     def pause_drawing(self) -> None:
+        """
+        Graceful pause request.
+
+        Behavior:
+        - finishes current fiber
+        - retracts filament
+        - pauses workflow safely
+        - waits for resume
+        """
+
         if self._drawing_thread is None:
             return
-        self._pause_event.clear()
-        self.drawing_paused_changed.emit(True)
-        self.log("Paused")
+
+        self.log(
+            "Pause requested..."
+        )
+
+        self._pause_requested.set()
 
     def resume_drawing(self) -> None:
+
         if self._drawing_thread is None:
             return
+
         self._pause_event.set()
-        self.drawing_paused_changed.emit(False)
-        self.log("Resumed")
 
     def toggle_pause(self) -> None:
         if self._drawing_thread is None:
@@ -1061,26 +1080,146 @@ class MachineController(QObject):
             self.resume_drawing()
 
     def stop_drawing(self) -> None:
+        """
+        Graceful drawing stop.
+
+        Behavior:
+        - finishes current movement/fiber
+        - stops generation after current fiber
+        - retracts filament
+        - parks toolhead safely
+        - disables heater
+        - keeps cooling fan active
+        """
+
         if self._drawing_thread is None:
             return
-        self._stop_event.set()
+
+        self.log(
+            "Graceful stop requested..."
+        )
+
+        # =====================================================
+        # REQUEST STOP AFTER CURRENT FIBER
+        # =====================================================
+
+        self._graceful_stop_requested.set()
+
+        # =====================================================
+        # ENSURE EXECUTION IS NOT PAUSED
+        # =====================================================
+
         self._pause_event.set()
-        
-        self.log("Stopping drawing...")
+
+        # =====================================================
+        # WAIT FOR THREAD TO FINISH CURRENT FIBER
+        # =====================================================
+
+        try:
+
+            if self._drawing_thread is not None:
+
+                finished = self._drawing_thread.wait(
+                    30000
+                )
+
+                if not finished:
+
+                    raise RuntimeError(
+                        "Drawing thread timeout during stop"
+                    )
+
+        except Exception as e:
+
+            self.log(
+                f"Thread wait failed: {e}"
+            )
+
+        # =====================================================
+        # SAFE SHUTDOWN SEQUENCE
+        # =====================================================
+
+        try:
+
+            if self.ser is not None:
+
+                # -------------------------------------------------
+                # RETRACT FILAMENT
+                # -------------------------------------------------
+
+                if not self._is_retracted:
+                    self.send_gcode(
+                        "G10"
+                    )
+                    self._is_retracted = True
+
+                # -------------------------------------------------
+                # SAFE PARK
+                # -------------------------------------------------
+
+                self.send_gcode(
+                    "G0 Z10 F1500"
+                )
+
+                self.send_gcode(
+                    "G0 X10 Y190 F3000"
+                )
+
+                # -------------------------------------------------
+                # DISABLE HEATER
+                # -------------------------------------------------
+
+                self.send_gcode(
+                    "M104 S0"
+                )
+
+                # -------------------------------------------------
+                # KEEP COOLING FAN ACTIVE
+                # -------------------------------------------------
+
+                self.send_gcode(
+                    "M106 S255"
+                )
+
+            self.log(
+                "Drawing stopped safely"
+            )
+
+        except Exception as e:
+
+            self.log(
+                f"Stop sequence failed: {e}"
+            )
     
     def emergency_stop(self) -> None:
         """
-        Immediate firmware-level emergency stop.
+        Immediate motion interruption using M410.
 
-        Sends M112 directly to the printer,
-        bypassing normal checked communication.
+        - Stops all buffered motion instantly
+        - Stops current drawing workflow
+        - Disables heater
+        - Keeps cooling fan active
+        - Preserves firmware/serial connection
         """
 
-        # stop internal execution state
-        self._stop_event.set()
+        # =====================================================
+        # INTERNAL EXECUTION STATE
+        # =====================================================
 
-        # release pause state
+        self._stop_event.set()
         self._pause_event.set()
+
+        # =====================================================
+        # CLEAR RESPONSE QUEUE
+        # =====================================================
+
+        while not self._response_queue.empty():
+
+            try:
+                self._response_queue.get_nowait()
+
+            except Exception:
+                break
 
         try:
 
@@ -1088,96 +1227,83 @@ class MachineController(QObject):
 
                 with self._serial_lock:
 
-                    self.ser.write(b"M112\n")
+                    # -------------------------------------------------
+                    # IMMEDIATE MOTION STOP
+                    # -------------------------------------------------
+
+                    self.ser.write(
+                        b"M410\n"
+                    )
+
+                    # -------------------------------------------------
+                    # DISABLE HOTEND HEATER
+                    # -------------------------------------------------
+
+                    self.ser.write(
+                        b"M104 S0\n"
+                    )
+
+                    # -------------------------------------------------
+                    # RETRACT FILAMENT
+                    # -------------------------------------------------
+                    if not self._is_retracted:
+                        self.ser.write(
+                            b"G10\n"
+                        )
+                        self._is_retracted = True
+
+                    # -------------------------------------------------
+                    # KEEP COOLING FAN ACTIVE
+                    # -------------------------------------------------
+
+                    self.ser.write(
+                        b"M106 S255\n"
+                    )
+
                     self.ser.flush()
 
-            self.log("EMERGENCY STOP triggered")
+            self.log(
+                "Emergency stop triggered"
+            )
 
         except Exception as e:
 
-            self.log(f"Emergency stop failed: {e}")
+            self.log(
+                f"Emergency stop failed: {e}"
+            )
 
-        # update UI state immediately
-        self.drawing_running_changed.emit(False)
-        self.drawing_paused_changed.emit(False)
+        # =====================================================
+        # FORCE UI STATE RESET
+        # =====================================================
+
+        self.drawing_running_changed.emit(
+            False
+        )
+
+        self.drawing_paused_changed.emit(
+            False
+        )
+
+        # =====================================================
+        # DESTROY ACTIVE THREAD REFERENCES
+        # =====================================================
+
+        if self._drawing_thread is not None:
+
+            try:
+
+                self._drawing_thread.quit()
+                self._drawing_thread.wait(2000)
+
+            except Exception as e:
+
+                self.log(
+                    f"Thread shutdown failed: {e}"
+                )
+
+        self._drawing_thread = None
+        self._worker = None
     
-    def reset_after_emergency(self) -> bool:
-        """
-        Recover printer communication after an emergency stop.
-
-        This function:
-        1. Clears internal execution flags
-        2. Sends firmware reset/recovery command (M999)
-        3. Reinitializes machine state
-        4. Restores controller/UI state
-
-        Returns:
-            True if recovery succeeded
-            False otherwise
-        """
-
-        try:
-
-            # printer must still be connected
-            if self.ser is None:
-                self.log("Cannot reset: printer not connected")
-                return False
-
-            # clear controller state
-            self._stop_event.clear()
-            self._pause_event.set()
-
-            # clear serial buffers
-            try:
-                self.ser.reset_input_buffer()
-                self.ser.reset_output_buffer()
-            except Exception:
-                pass
-
-            self.log("Attempting firmware recovery...")
-
-            # ---------------- firmware reset ----------------
-
-            # M999 = restart after M112 emergency stop
-            with self._serial_lock:
-
-                self.ser.write(b"M999\n")
-                self.ser.flush()
-
-            # give firmware time to recover
-            time.sleep(2.0)
-
-            # ---------------- reinitialize machine ----------------
-
-            self.log("Reinitializing printer state...")
-
-            self._send_and_wait_ok("G90")
-            self._send_and_wait_ok("M82")
-            self._send_and_wait_ok("G92 E0")
-
-            # optional re-home
-            self.log("Rehoming printer...")
-            self._send_and_wait_ok("G28", timeout_s=120.0)
-
-            self.drawing_running_changed.emit(False)
-            self.drawing_paused_changed.emit(False)
-
-            self.log("Emergency recovery completed")
-
-            return True
-
-        except Exception as e:
-
-            self.log(f"Recovery failed: {e}")
-
-            # safest fallback:
-            # fully disconnect serial
-            try:
-                self.disconnect()
-            except Exception:
-                pass
-
-            return False
     
     # ---------- Safe area helpers ----------
     def _safe_center(self) -> tuple[float, float, float, float, float, float]:
@@ -1347,13 +1473,12 @@ class MachineController(QObject):
         self._run_custom_centered(status_signal)
 
     def _wait_pause_or_stop(self) -> None:
-        # allows responsive stop while paused
-        while not self._pause_event.is_set():
-            if self._stop_event.is_set():
-                raise RuntimeError("Stopped")
-            time.sleep(0.05)
+
         if self._stop_event.is_set():
-            raise RuntimeError("Stopped")
+
+            raise RuntimeError(
+                "Stopped"
+            )
 
     def _send_checked(self, cmd: str) -> None:
         if self._stop_event.is_set():
@@ -1488,8 +1613,7 @@ class MachineController(QObject):
         ye: float,
         speed: int,
         zoff: float,
-        is_retracted: bool,
-    ) -> bool:
+    ) -> None:
 
         send = self._send_checked
 
@@ -1507,9 +1631,10 @@ class MachineController(QObject):
         send(f"G0 Z{zoff:.3f} F{speed}")
 
         # unretract if needed
-        if is_retracted:
+        if self._is_retracted:
             send("G11")
             send("G1 E0.1 F300")
+            self._is_retracted = False
 
         # extrusion move
         send(
@@ -1519,12 +1644,12 @@ class MachineController(QObject):
             f"F{speed}"
         )
 
-        # retract
-        send("G10")
+        if not self._is_retracted:
+            send("G10")
+            self._is_retracted = True
 
         send("M400")
 
-        return True
 
 
     def _run_pass(
@@ -1537,7 +1662,6 @@ class MachineController(QObject):
         status_signal: Signal,
     ) -> None:
 
-        is_retracted = False
         i = 0
 
         while True:
@@ -1588,14 +1712,13 @@ class MachineController(QObject):
 
             # ---------------- execute fiber ----------------
 
-            is_retracted = self._execute_fiber(
+            self._execute_fiber(
                 xs=xs,
                 ys=ys,
                 xe=xe,
                 ye=ye,
                 speed=speed,
                 zoff=zoff,
-                is_retracted=is_retracted,
             )
 
             # ---------------- cleaning ----------------
@@ -1615,6 +1738,100 @@ class MachineController(QObject):
             status_signal.emit(
                 f"{axis.capitalize()} fiber {i + 1} completed"
             )
+
+            # =====================================================
+            # GRACEFUL PAUSE
+            # =====================================================
+
+            if self._pause_requested.is_set():
+
+                try:
+
+                    # ---------------------------------------------
+                    # RETRACT FILAMENT
+                    # ---------------------------------------------
+                    if not self._is_retracted:
+                        self.send_gcode(
+                            "G10"
+                        )
+                        self._is_retracted = True
+
+                except Exception as e:
+
+                    self.log(
+                        f"Pause retract failed: {e}"
+                    )
+
+                self._pause_event.clear()
+
+                self.drawing_paused_changed.emit(
+                    True
+                )
+
+                self.log(
+                    "Paused"
+                )
+
+                # ---------------------------------------------
+                # WAIT FOR RESUME
+                # ---------------------------------------------
+
+                while not self._pause_event.is_set():
+
+                    if self._stop_event.is_set():
+
+                        raise RuntimeError(
+                            "Stopped"
+                        )
+
+                    if self._graceful_stop_requested.is_set():
+
+                        self.log(
+                            "Graceful stop during pause"
+                        )
+
+                        return
+
+                    time.sleep(0.05)
+
+                try:
+
+                    # ---------------------------------------------
+                    # UNRETRACT FILAMENT
+                    # ---------------------------------------------
+                    if self._is_retracted:
+                        self.send_gcode(
+                            "G11"
+                        )
+                        self._is_retracted = False
+
+                except Exception as e:
+
+                    self.log(
+                        f"Resume unretract failed: {e}"
+                    )
+
+                self._pause_requested.clear()
+
+                self.drawing_paused_changed.emit(
+                    False
+                )
+
+                self.log(
+                    "Resumed"
+                )
+
+            # =====================================================
+            # GRACEFUL STOP
+            # =====================================================
+
+            if self._graceful_stop_requested.is_set():
+
+                self.log(
+                    "Graceful stop completed"
+                )
+
+                return
 
             i += 1
 
@@ -1641,7 +1858,10 @@ class MachineController(QObject):
 
         send("G92 E0")
 
-        send(f"M109 S{float(self.state.params.target_temperature)}")
+        self._send_and_wait_ok(
+            f"M109 S{float(self.state.params.target_temperature)}",
+            timeout_s=300.0
+        )
 
         # ---------------- active patterns ----------------
 
