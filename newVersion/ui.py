@@ -11,6 +11,7 @@ from PySide6.QtGui import (
     QPen,
     QBrush,
     QPixmap,
+    QRadialGradient,
     QIcon,
 )
 from PySide6.QtWidgets import (
@@ -298,532 +299,383 @@ under the supervision of Dr. Andrew Shyrakenko.
 """
 
 # =========================================================
-# THERMOMETER WIDGET (UPDATED VERSION)
+# REACTOR THERMOMETER WIDGET
 # =========================================================
 
-class ThermometerWidget(QWidget):
+class ReactorThermometerWidget(QWidget):
 
-    def __init__(
-        self,
-        state: "AppState",
-        parent=None
-    ) -> None:
-
-        super().__init__(parent)
+    def __init__(self, state: AppState) -> None:
+        super().__init__()
 
         self.state = state
 
-        self.setMinimumSize(180, 620)
-
-        self.state.changed.connect(
-            self.update
+        self.current_temp = float(
+            self.state.params.current_temperature
         )
 
-    # =====================================================
-    # PAINT
-    # =====================================================
+        self.setMinimumWidth(320)
+        self.setMinimumHeight(480)
+
+        self.state.temperature_changed.connect(
+            self.on_temperature_changed
+        )
+
+    @Slot(float)
+    def on_temperature_changed(
+        self,
+        value: float
+    ):
+        self.current_temp = float(value)
+        self.update()
+
+    def _temperature_color(self) -> QColor:
+
+        t = self.current_temp
+
+        if t < 10:
+            return QColor("#2563EB")
+
+        elif t < 25:
+            return QColor("#00BFFF")
+
+        elif t < 35:
+            return QColor("#FF9F1A")
+
+        return QColor("#FF3B30")
 
     def paintEvent(self, event):
 
         painter = QPainter(self)
 
         painter.setRenderHint(
-            QPainter.Antialiasing
+            QPainter.Antialiasing,
+            True
         )
 
-        rect = self.rect()
+        w = self.width()
+        h = self.height()
 
-        # =================================================
-        # TEMPERATURE
-        # =================================================
+        # =====================================================
+        # SAFE AREA
+        # =====================================================
 
-        temp = max(
-            0.0,
-            min(
-                50.0,
-                float(
-                    self.state.params.current_temperature
-                )
+        pad = 34
+
+        outer = QRectF(
+            pad,
+            pad,
+            w - pad * 2,
+            h - pad * 2
+        )
+
+        # =====================================================
+        # MAIN PANEL
+        # =====================================================
+
+        panel_gradient = QLinearGradient(
+            outer.topLeft(),
+            outer.bottomRight()
+        )
+
+        panel_gradient.setColorAt(
+            0,
+            QColor(4, 14, 28, 240)
+        )
+
+        panel_gradient.setColorAt(
+            1,
+            QColor(2, 8, 18, 240)
+        )
+
+        painter.setPen(
+            QPen(
+                QColor(0, 180, 255, 120),
+                2
             )
         )
 
-        ratio = temp / 50.0
+        painter.setBrush(panel_gradient)
 
-        # =================================================
-        # COLORS
-        # =================================================
-
-        cyan = QColor(
-            0,
-            220,
-            255
+        painter.drawRoundedRect(
+            outer,
+            28,
+            28
         )
 
-        amber = QColor(
-            255,
-            180,
-            0
-        )
+        # =====================================================
+        # THERMOMETER
+        # =====================================================
 
-        red = QColor(
-            255,
-            70,
-            70
-        )
+        tube_w = outer.width() * 0.10
+        tube_h = outer.height() * 0.72
 
-        if temp < 20:
+        tube_x = outer.center().x() - tube_w / 2
+        tube_y = outer.top() + 60
 
-            fill_color = cyan
-
-        elif temp < 35:
-
-            fill_color = amber
-
-        else:
-
-            fill_color = red
-
-        # =================================================
-        # RESPONSIVE GEOMETRY
-        # =================================================
-
-        tube_w = min(
-            rect.width() * 0.26,
-            72
-        )
-
-        tube_h = rect.height() * 0.74
-
-        tube_x = (
-            rect.width() - tube_w
-        ) / 2
-
-        tube_y = rect.height() * 0.06
-
-        # =================================================
-        # OUTER FRAME
-        # =================================================
-
-        outer_rect = QRectF(
+        tube_rect = QRectF(
             tube_x,
             tube_y,
             tube_w,
             tube_h
         )
 
-        # outer glow
-        glow_color = QColor(
-            fill_color
+        # glow
+        painter.setPen(Qt.NoPen)
+
+        painter.setBrush(
+            QColor(0, 180, 255, 30)
         )
 
-        glow_color.setAlpha(25)
+        painter.drawRoundedRect(
+            tube_rect.adjusted(-10, -10, 10, 10),
+            tube_w,
+            tube_w
+        )
+
+        # border
+        painter.setPen(
+            QPen(
+                QColor(120, 220, 255, 200),
+                5
+            )
+        )
+
+        painter.setBrush(
+            QColor(10, 18, 30, 230)
+        )
+
+        painter.drawRoundedRect(
+            tube_rect,
+            tube_w / 2,
+            tube_w / 2
+        )
+
+        # =====================================================
+        # INTERNAL CHAMBER
+        # =====================================================
+
+        chamber = tube_rect.adjusted(
+            8,
+            8,
+            -8,
+            -8
+        )
 
         painter.setPen(Qt.NoPen)
 
-        painter.setBrush(glow_color)
+        painter.setBrush(
+            QColor(0, 0, 0, 200)
+        )
 
         painter.drawRoundedRect(
-            outer_rect.adjusted(
-                -10,
-                -10,
-                10,
-                10
-            ),
-            36,
-            36
+            chamber,
+            chamber.width() / 2,
+            chamber.width() / 2
         )
 
-        # frame
-        painter.setBrush(
-            QColor(8, 15, 28, 240)
+        # =====================================================
+        # FILL
+        # =====================================================
+
+        ratio = max(
+            0.0,
+            min(
+                1.0,
+                self.current_temp / 50.0
+            )
         )
+
+        fill_h = chamber.height() * ratio
+
+        fill_rect = QRectF(
+            chamber.left(),
+            chamber.bottom() - fill_h,
+            chamber.width(),
+            fill_h
+        )
+
+        color = self._temperature_color()
+
+        gradient = QLinearGradient(
+            fill_rect.topLeft(),
+            fill_rect.bottomLeft()
+        )
+
+        gradient.setColorAt(
+            0,
+            color.lighter(180)
+        )
+
+        gradient.setColorAt(
+            1,
+            color.darker(170)
+        )
+
+        painter.setBrush(gradient)
+
+        painter.drawRoundedRect(
+            fill_rect,
+            chamber.width() / 2,
+            chamber.width() / 2
+        )
+
+        # =====================================================
+        # SCALE
+        # =====================================================
+
+        scale_x = tube_rect.left() - 30
 
         painter.setPen(
             QPen(
-                QColor(80, 170, 255),
+                QColor(180, 220, 255, 180),
                 2
             )
         )
 
-        painter.drawRoundedRect(
-            outer_rect,
-            36,
-            36
-        )
+        font = QFont("Inter")
+        font.setPointSize(12)
 
-        # =================================================
-        # INNER CHANNEL
-        # =================================================
+        painter.setFont(font)
 
-        margin = 14
+        for i in range(0, 51, 10):
 
-        channel_rect = QRectF(
-            outer_rect.left() + margin,
-            outer_rect.top() + margin,
-            outer_rect.width() - margin * 2,
-            outer_rect.height() - margin * 2
-        )
-
-        painter.setBrush(
-            QColor(0, 0, 0, 90)
-        )
-
-        painter.setPen(Qt.NoPen)
-
-        painter.drawRoundedRect(
-            channel_rect,
-            18,
-            18
-        )
-
-        # =================================================
-        # HOT ZONE
-        # =================================================
-
-        hot_zone_h = (
-            channel_rect.height() * 0.2
-        )
-
-        hot_zone_rect = QRectF(
-            channel_rect.left(),
-            channel_rect.top(),
-            channel_rect.width(),
-            hot_zone_h
-        )
-
-        hot_gradient = QLinearGradient(
-            hot_zone_rect.topLeft(),
-            hot_zone_rect.bottomLeft()
-        )
-
-        hot_gradient.setColorAt(
-            0.0,
-            QColor(255, 0, 0, 45)
-        )
-
-        hot_gradient.setColorAt(
-            1.0,
-            QColor(255, 0, 0, 0)
-        )
-
-        painter.setBrush(
-            hot_gradient
-        )
-
-        painter.drawRoundedRect(
-            hot_zone_rect,
-            18,
-            18
-        )
-
-        # =================================================
-        # SEGMENTS
-        # =================================================
-
-        segment_count = 18
-
-        spacing = 5
-
-        segment_h = (
-            channel_rect.height()
-            - spacing * (segment_count - 1)
-        ) / segment_count
-
-        active_segments = int(
-            segment_count * ratio
-        )
-
-        for i in range(segment_count):
-
-            yy = (
-                channel_rect.bottom()
-                - (segment_h + spacing) * (i + 1)
+            y = chamber.bottom() - (
+                chamber.height() * (i / 50.0)
             )
 
-            segment_rect = QRectF(
-                channel_rect.left() + 5,
-                yy,
-                channel_rect.width() - 10,
-                segment_h
+            painter.drawLine(
+                int(scale_x),
+                int(y+1),
+                int(scale_x + 15),
+                int(y+1)
             )
 
-            # inactive
-            if i >= active_segments:
-
-                painter.setBrush(
-                    QColor(255, 255, 255, 12)
-                )
-
-                painter.setPen(Qt.NoPen)
-
-                painter.drawRoundedRect(
-                    segment_rect,
-                    8,
-                    8
-                )
-
-                continue
-
-            # glow
-            glow = QColor(fill_color)
-
-            glow.setAlpha(60)
-
-            painter.setBrush(glow)
-
-            painter.drawRoundedRect(
-                segment_rect.adjusted(
-                    -2,
-                    -2,
-                    2,
-                    2
+            painter.drawText(
+                QRectF(
+                    scale_x - 52,
+                    y - 12,
+                    40,
+                    24
                 ),
-                10,
-                10
+                Qt.AlignRight | Qt.AlignVCenter,
+                f"{i} °C"
             )
 
-            # active segment
-            gradient = QLinearGradient(
-                segment_rect.topLeft(),
-                segment_rect.bottomLeft()
-            )
-
-            gradient.setColorAt(
-                0.0,
-                QColor(255, 255, 255, 80)
-            )
-
-            gradient.setColorAt(
-                0.15,
-                fill_color.lighter(135)
-            )
-
-            gradient.setColorAt(
-                1.0,
-                fill_color
-            )
-
-            painter.setBrush(gradient)
-
-            painter.setPen(Qt.NoPen)
-
-            painter.drawRoundedRect(
-                segment_rect,
-                8,
-                8
-            )
-
-        # =================================================
+        # =====================================================
         # REACTOR BASE
-        # =================================================
+        # =====================================================
 
-        base_w = tube_w * 1.6
-
-        base_h = 34
-
-        base_x = (
-            rect.width() - base_w
-        ) / 2
-
-        base_y = outer_rect.bottom() + 18
+        base_size = tube_w * 1.55
 
         base_rect = QRectF(
-            base_x,
-            base_y,
-            base_w,
-            base_h
+            outer.center().x() - base_size / 2,
+            tube_rect.bottom() - 24,
+            base_size,
+            base_size
         )
 
-        base_gradient = QLinearGradient(
-            base_rect.topLeft(),
-            base_rect.bottomLeft()
-        )
-
-        base_gradient.setColorAt(
-            0.0,
-            QColor(24, 40, 64)
+        base_gradient = QRadialGradient(
+            base_rect.center(),
+            base_size / 1.8
         )
 
         base_gradient.setColorAt(
-            1.0,
-            QColor(8, 14, 26)
+            0,
+            color
+        )
+
+        base_gradient.setColorAt(
+            1,
+            QColor(60, 20, 0)
         )
 
         painter.setBrush(base_gradient)
 
         painter.setPen(
             QPen(
-                QColor(80, 170, 255),
-                2
+                QColor(120, 220, 255, 180),
+                4
             )
         )
 
-        painter.drawRoundedRect(
-            base_rect,
-            12,
-            12
+        painter.drawEllipse(base_rect)
+
+        # =====================================================
+        # LABELS
+        # =====================================================
+
+        label_rect = QRectF(
+            outer.left(),
+            outer.bottom() - 82,
+            outer.width(),
+            60
         )
 
-        # =================================================
-        # INNER CORE REFLECTION
-        # =================================================
-
-        reflection_rect = QRectF(
-            channel_rect.left() + 5,
-            channel_rect.top() + 5,
-            channel_rect.width() * 0.22,
-            channel_rect.height()
+        painter.setPen(
+            QColor("#F8FAFC")
         )
 
-        reflection_gradient = QLinearGradient(
-            reflection_rect.topLeft(),
-            reflection_rect.topRight()
+        value_font = QFont("Orbitron")
+
+        value_font.setPointSize(18)
+        value_font.setBold(True)
+
+        painter.setFont(value_font)
+
+        painter.drawText(
+            label_rect,
+            Qt.AlignCenter,
+            f"{self.current_temp:.1f} °C"
         )
 
-        reflection_gradient.setColorAt(
-            0.0,
-            QColor(255, 255, 255, 45)
-        )
+        # =====================================================
+        # SIDE LABELS
+        # =====================================================
 
-        reflection_gradient.setColorAt(
-            1.0,
-            QColor(255, 255, 255, 0)
-        )
+        side_font = QFont("Inter")
+        side_font.setPointSize(11)
+        side_font.setBold(True)
 
-        painter.setBrush(
-            reflection_gradient
-        )
+        painter.setFont(side_font)
 
-        painter.setPen(Qt.NoPen)
-
-        painter.drawRoundedRect(
-            reflection_rect,
-            18,
-            18
-        )
-
-        # =================================================
-        # SIDE SCALE
-        # =================================================
-
-        scale_font = QFont(
-            "Inter",
-            9,
-            QFont.Bold
-        )
-
-        painter.setFont(scale_font)
-
-        scale_values = [
-            0,
-            10,
-            20,
-            30,
-            40,
-            50
+        labels = [
+            ("HOT", "#FF3B30", 0.15),
+            ("WARM", "#FF9500", 0.35),
+            ("OPTIMAL", "#FFD60A", 0.52),
+            ("COOL", "#00BFFF", 0.72),
+            ("COLD", "#2563EB", 0.90),
         ]
 
-        for value in scale_values:
+        sx = min(
+            tube_rect.right() + 28,
+            outer.right() - 90
+        )
 
-            yy = (
-                channel_rect.bottom()
-                - (channel_rect.height() * (value / 50.0))
+        for text, c, ratio_y in labels:
+
+            y = chamber.top() + (
+                chamber.height() * ratio_y
             )
 
-            # tick line
-            painter.setPen(
-                QPen(
-                    QColor(120, 180, 255, 120),
-                    1
-                )
-            )
+            painter.setPen(QColor(c))
 
             painter.drawLine(
-                outer_rect.right() + 6,
-                yy,
-                outer_rect.right() + 18,
-                yy
-            )
-
-            # label
-            painter.setPen(
-                QColor(140, 190, 255)
+                int(tube_rect.right() + 12),
+                int(y),
+                int(sx - 8),
+                int(y)
             )
 
             painter.drawText(
                 QRectF(
-                    outer_rect.right() + 24,
-                    yy - 10,
-                    40,
-                    20
+                    sx,
+                    y - 12,
+                    100,
+                    24
                 ),
-                Qt.AlignLeft,
-                f"{value}"
+                Qt.AlignLeft | Qt.AlignVCenter,
+                text
             )
-
-        # =================================================
-        # CURRENT TEMP TEXT
-        # =================================================
-
-        temp_font = QFont(
-            "Orbitron",
-            18,
-            QFont.Bold
-        )
-
-        painter.setFont(temp_font)
-
-        painter.setPen(fill_color)
-
-        painter.drawText(
-            QRectF(
-                0,
-                base_rect.bottom() + 18,
-                rect.width(),
-                36
-            ),
-            Qt.AlignCenter,
-            f"{temp:.1f} °C"
-        )
-
-        # =================================================
-        # STATUS
-        # =================================================
-
-        if temp < 20:
-
-            status = "COOL"
-
-        elif temp < 35:
-
-            status = "STABLE"
-
-        else:
-
-            status = "HEATING"
-
-        status_font = QFont(
-            "Inter",
-            10,
-            QFont.Bold
-        )
-
-        painter.setFont(status_font)
-
-        painter.setPen(
-            QColor(200, 200, 200)
-        )
-
-        painter.drawText(
-            QRectF(
-                0,
-                base_rect.bottom() + 52,
-                rect.width(),
-                24
-            ),
-            Qt.AlignCenter,
-            status
-        )
 
 class RectanglePreview(QWidget):
     def __init__(self, controller: "MachineController", state: "AppState") -> None:
@@ -1004,7 +856,7 @@ class MainWindow(QMainWindow):
         self.player.pause()
 
         self.setWindowTitle("Optimus Prime - Microfiber Machine Interface v3.0")
-        self.setMinimumSize(QSize(980, 780))
+        self.setMinimumSize(QSize(1100, 780))
 
         icon_path = os.path.abspath(
             "assets/optimus_icon.ico"
@@ -1753,6 +1605,8 @@ class FiberLayoutPage(QWidget):
         QComboBox QAbstractItemView {
             background: rgb(10, 18, 30);
             color: white;
+            font-size: 14px;
+            font-family: Inter;               
             selection-background-color: rgb(0, 120, 255);
             border: 1px solid rgb(0, 180, 255);
         }
@@ -2184,7 +2038,7 @@ class DrawSettingsPage(QWidget):
         
 
         self.btn_next.clicked.connect(
-            lambda: self.mw.go("Syringe")
+            lambda: self.mw.go("Temperature")
         )
 
         # =========================================================
@@ -2736,6 +2590,9 @@ class DrawSettingsPage(QWidget):
         self._update_toggle_texts()
 
 
+# =========================================================
+# TEMPERATURE PAGE
+# =========================================================
 
 class TemperaturePage(QWidget):
 
@@ -2746,15 +2603,13 @@ class TemperaturePage(QWidget):
         self.state = mw.state
         self.controller = mw.controller
 
-        self.bg = QPixmap(
-            "assets/layout_bg.png"
-        )
+        self.bg = QPixmap("assets/layout_bg.png")
 
         # =====================================================
         # ROOT
         # =====================================================
 
-        root = QVBoxLayout(self)
+        root = QHBoxLayout(self)
 
         root.setContentsMargins(
             24,
@@ -2763,307 +2618,369 @@ class TemperaturePage(QWidget):
             24
         )
 
+        root.setSpacing(22)
+
         # =====================================================
-        # MAIN PANEL
+        # LEFT PANEL
         # =====================================================
 
-        self.main_panel = QFrame()
+        left_panel = QFrame()
 
-        self.main_panel.setObjectName(
-            "mainPanel"
+        left_panel.setObjectName(
+            "controlPanel"
         )
 
-        root.addWidget(
-            self.main_panel
-        )
+        left_panel.setMinimumWidth(360)
 
-        panel_layout = QVBoxLayout(
-            self.main_panel
-        )
+        left_layout = QVBoxLayout(left_panel)
 
-        panel_layout.setContentsMargins(
+        left_layout.setContentsMargins(
             28,
             28,
             28,
             28
         )
 
-        panel_layout.setSpacing(24)
+        left_layout.setSpacing(18)
 
-        # =====================================================
-        # TITLE
-        # =====================================================
+        title = QLabel("THERMAL CONTROL")
 
-        self.title = QLabel(
-            "THERMAL CORE CONTROL"
-        )
-
-        self.title.setObjectName(
+        title.setObjectName(
             "pageTitle"
         )
 
-        panel_layout.addWidget(
-            self.title
-        )
+        left_layout.addWidget(title)
 
         # =====================================================
-        # CENTER AREA
+        # CURRENT / TARGET GRID
         # =====================================================
 
-        center_layout = QHBoxLayout()
+        temp_grid = QGridLayout()
 
-        center_layout.setSpacing(28)
+        temp_grid.setHorizontalSpacing(18)
+        temp_grid.setVerticalSpacing(18)
 
-        # =====================================================
-        # LEFT — REACTOR PANEL
-        # =====================================================
+        # CURRENT CARD
 
-        self.reactor_panel = QFrame()
+        current_card = QFrame()
 
-        self.reactor_panel.setObjectName(
-            "reactorPanel"
+        current_card.setObjectName(
+            "paramCard"
         )
 
-        reactor_layout = QVBoxLayout(
-            self.reactor_panel
+        current_layout = QVBoxLayout(current_card)
+
+        current_layout.setContentsMargins(
+            20,
+            18,
+            20,
+            18
         )
 
-        reactor_layout.setContentsMargins(
-            24,
-            24,
-            24,
-            24
+        current_layout.setSpacing(8)
+
+        current_label = QLabel("CURRENT")
+
+        current_label.setObjectName(
+            "paramTitle"
         )
 
-        reactor_layout.setSpacing(16)
+        self.current_temp = QLabel("0.0 °C")
 
-        reactor_title = QLabel(
-            "THERMAL REACTOR"
+        self.current_temp.setObjectName(
+            "paramValue"
         )
 
-        reactor_title.setObjectName(
-            "reactorTitle"
+        current_layout.addWidget(current_label)
+        current_layout.addWidget(self.current_temp)
+
+        # TARGET CARD
+
+        target_card = QFrame()
+
+        target_card.setObjectName(
+            "paramCard"
         )
 
-        reactor_layout.addWidget(
-            reactor_title,
-            alignment=Qt.AlignCenter
+        target_layout = QVBoxLayout(target_card)
+
+        target_layout.setContentsMargins(
+            20,
+            18,
+            20,
+            18
         )
 
-        self.thermometer = ThermometerWidget(
-            self.state
+        target_layout.setSpacing(8)
+
+        target_label = QLabel("TARGET")
+
+        target_label.setObjectName(
+            "paramTitle"
         )
 
-        reactor_layout.addWidget(
-            self.thermometer,
-            alignment=Qt.AlignCenter
+        self.target_temp = QLabel("25.0 °C")
+
+        self.target_temp.setObjectName(
+            "paramValueBlue"
         )
 
-        center_layout.addWidget(
-            self.reactor_panel,
-            3
-        )
+        target_layout.addWidget(target_label)
+        target_layout.addWidget(self.target_temp)
 
-        # =====================================================
-        # RIGHT — TELEMETRY COLUMN
-        # =====================================================
+        temp_grid.addWidget(current_card, 0, 0)
+        temp_grid.addWidget(target_card, 0, 1)
 
-        telemetry_container = QFrame()
-
-        telemetry_container.setObjectName(
-            "telemetryContainer"
-        )
-
-        telemetry_layout = QVBoxLayout(
-            telemetry_container
-        )
-
-        telemetry_layout.setContentsMargins(
-            32,
-            8,
-            8,
-            8
-        )
-
-        telemetry_layout.setSpacing(20)
-
-        # =====================================================
-        # CURRENT TEMPERATURE
-        # =====================================================
-
-        current_card = self.create_telemetry_card(
-            "CURRENT TEMPERATURE"
-        )
-
-        self.current_temp_label = QLabel(
-            "0.0 °C"
-        )
-
-        self.current_temp_label.setObjectName(
-            "temperatureValue"
-        )
-
-        current_card.layout().addWidget(
-            self.current_temp_label
-        )
-
-        telemetry_layout.addWidget(
-            current_card
-        )
-
-        # =====================================================
-        # TARGET TEMPERATURE
-        # =====================================================
-
-        target_card = self.create_telemetry_card(
-            "TARGET TEMPERATURE"
-        )
-
-        self.target_temp = QDoubleSpinBox()
-
-        self.target_temp.setRange(
-            0.0,
-            50.0
-        )
-
-        self.target_temp.setDecimals(1)
-
-        self.target_temp.setSingleStep(
-            0.5
-        )
-
-        self.target_temp.setSuffix(
-            " °C"
-        )
-
-        self.target_temp.valueChanged.connect(
-            lambda v: self.state.set_target_temperature(
-                float(v)
-            )
-        )
-
-        target_card.layout().addWidget(
-            self.target_temp
-        )
-
-        telemetry_layout.addWidget(
-            target_card
-        )
+        left_layout.addStretch()
+        left_layout.addLayout(temp_grid)
 
         # =====================================================
         # STATUS
         # =====================================================
 
-        status_card = self.create_telemetry_card(
-            "THERMAL STATUS"
+        self.status_badge = QLabel("IDLE")
+
+        self.status_badge.setObjectName(
+            "statusBadge"
         )
 
-        self.status_label = QLabel(
-            "IDLE"
+        self.status_badge.setAlignment(
+            Qt.AlignCenter
         )
 
-        self.status_label.setObjectName(
-            "statusValue"
+        self.status_badge.setFixedSize(
+            140,
+            42
         )
 
-        status_card.layout().addWidget(
-            self.status_label
-        )
+        status_container = QWidget()
 
-        telemetry_layout.addWidget(
-            status_card
-        )
+        status_layout = QHBoxLayout(status_container)
+
+        status_layout.setContentsMargins(0, 0, 0, 0)
+
+        status_layout.addStretch()
+        status_layout.addWidget(self.status_badge)
+        status_layout.addStretch()
+
+        left_layout.addWidget(status_container)
+
 
         # =====================================================
-        # THERMAL COMMAND
+        # INPUT
         # =====================================================
 
-        command_card = self.create_telemetry_card(
-            "THERMAL COMMAND"
+        self.target_input = QDoubleSpinBox()
+
+        self.target_input.setRange(
+            0,
+            50
         )
+
+        self.target_input.setDecimals(2)
+
+        self.target_input.setSingleStep(0.5)
+
+        self.target_input.setValue(
+            float(
+                self.state.params.target_temperature
+            )
+        )
+
+        input_card = self.create_param_widget(
+            "SET TARGET TEMPERATURE",
+            self.target_input
+        )
+
+        left_layout.addSpacing(12)
+
+        left_layout.addWidget(input_card)
+
+        
+        # =====================================================
+        # APPLY BUTTON
+        # =====================================================
 
         self.btn_apply = QPushButton(
-            "APPLY TEMPERATURE"
+            "APPLY TARGET"
         )
 
         self.btn_apply.setObjectName(
-            "engineeringButton"
+            "applyButton"
         )
 
-        self.btn_apply.setFixedHeight(
-            56
-        )
+        self.btn_apply.setFixedHeight(54)
+        self.btn_apply.setFixedWidth(300)
 
         self.btn_apply.clicked.connect(
             self.apply_temperature
         )
 
-        command_card.layout().addWidget(
-            self.btn_apply
+        apply_container = QWidget()
+
+        apply_layout = QHBoxLayout(apply_container)
+
+        apply_layout.setContentsMargins(0, 0, 0, 0)
+
+        apply_layout.addWidget(
+            self.btn_apply,
+            alignment=Qt.AlignLeft
         )
 
-        telemetry_layout.addWidget(
-            command_card
-        )
+        left_layout.addWidget(apply_container)
 
-        telemetry_layout.addStretch()
-
-        center_layout.addWidget(
-            telemetry_container,
-            2
-        )
-
-        panel_layout.addLayout(
-            center_layout
-        )
-
+        left_layout.addStretch()
+        
         # =====================================================
-        # FOOTER
+        # MONITOR CARD
         # =====================================================
 
-        footer = QHBoxLayout()
+        monitor = QFrame()
 
-        footer.setContentsMargins(
-            4,
-            6,
-            4,
-            0
+        monitor.setObjectName(
+            "monitorCard"
         )
 
-        self.footer_label = QLabel(
-            "THERMAL MONITORING ACTIVE"
+        mon_layout = QHBoxLayout(monitor)
+
+        mon_layout.setContentsMargins(
+            18,
+            14,
+            18,
+            14
         )
 
-        self.footer_label.setObjectName(
-            "footerLabel"
+        mon_layout.setSpacing(12)
+
+        info_icon = QLabel("i")
+
+        info_icon.setObjectName(
+            "monitorIcon"
         )
 
-        footer.addWidget(
-            self.footer_label
+        info_icon.setAlignment(
+            Qt.AlignCenter
         )
 
-        footer.addStretch()
+        info_icon.setFixedSize(
+            38,
+            38
+        )
+
+        mon_layout.addWidget(info_icon)
+
+        txt_layout = QVBoxLayout()
+
+        txt_layout.setSpacing(4)
+
+        t1 = QLabel(
+            "Monitoring active via M155"
+        )
+
+        t1.setObjectName(
+            "monitorTitle"
+        )
+
+        t2 = QLabel(
+            "Temperature feedback enabled"
+        )
+
+        t2.setObjectName(
+            "monitorSubtitle"
+        )
+
+        txt_layout.addWidget(t1)
+        txt_layout.addWidget(t2)
+
+        mon_layout.addLayout(txt_layout)
+
+        
+
+        dot = QFrame()
+
+        dot.setFixedSize(10, 10)
+
+        dot.setStyleSheet("""
+            background: rgb(0, 255, 120);
+            border-radius: 5px;
+        """)
+
+        mon_layout.addWidget(dot)
+
+        left_layout.addSpacing(18)
+
+        left_layout.addWidget(monitor)
+
+        left_layout.addStretch()
+
+        # =====================================================
+        # NEXT BUTTON
+        # =====================================================
 
         self.btn_next = QPushButton(
             "NEXT →"
         )
 
-        self.btn_next.setFixedSize(
-            220,
-            56
+        self.btn_next.setObjectName(
+            "nextButton"
         )
 
-        self.btn_next.clicked.connect(
-            lambda: self.mw.go("Main")
-        )
+        self.btn_next.setFixedHeight(54)
+        self.btn_next.setFixedWidth(300)
 
-        footer.addWidget(
+        next_container = QWidget()
+
+        next_layout = QHBoxLayout(next_container)
+
+        next_layout.setContentsMargins(0, 0, 0, 0)
+
+        next_layout.addWidget(
             self.btn_next,
             alignment=Qt.AlignRight
         )
 
-        panel_layout.addLayout(
-            footer
+        left_layout.addWidget(next_container)
+
+        # =====================================================
+        # RIGHT PANEL
+        # =====================================================
+
+        right_panel = QFrame()
+
+        right_panel.setObjectName(
+            "reactorPanel"
+        )
+
+        right_layout = QVBoxLayout(right_panel)
+
+        right_layout.setContentsMargins(
+            16,
+            16,
+            16,
+            16
+        )
+
+        self.thermometer = ReactorThermometerWidget(
+            self.state
+        )
+
+        right_layout.addWidget(
+            self.thermometer,
+            1
+        )
+
+        # =====================================================
+        # ADD PANELS
+        # =====================================================
+
+        root.addWidget(
+            left_panel,
+            2
+        )
+
+        root.addWidget(
+            right_panel,
+            1
         )
 
         # =====================================================
@@ -3075,87 +2992,29 @@ class TemperaturePage(QWidget):
         QWidget {
             color: white;
             font-family: Inter;
-            font-size: 14px;
         }
 
-        /* =====================================================
-           MAIN PANEL
-        ===================================================== */
-
-        QFrame#mainPanel {
+        QFrame#controlPanel,
+        QFrame#reactorPanel {
 
             background: rgba(8, 15, 28, 220);
 
             border: 1px solid rgba(0, 180, 255, 90);
 
-            border-radius: 28px;
-        }
-
-        /* =====================================================
-           TITLE
-        ===================================================== */
-
-        QLabel#pageTitle {
-
-            font-size: 42px;
-
-            font-weight: 900;
-
-            color: white;
-
-            letter-spacing: 3px;
-
-            padding-bottom: 8px;
-        }
-
-        /* =====================================================
-           REACTOR PANEL
-        ===================================================== */
-
-        QFrame#reactorPanel {
-
-            background: rgba(4, 10, 20, 180);
-
-            border: 1px solid rgba(0, 180, 255, 60);
-
             border-radius: 24px;
         }
 
-        QLabel#reactorTitle {
+        QLabel#pageTitle {
 
-            color: rgb(0, 220, 255);
-
-            font-size: 12px;
-
+            font-size: 32px;
             font-weight: 800;
 
-            letter-spacing: 4px;
+            color: white;
+
+            letter-spacing: 2px;
         }
 
-        /* =====================================================
-           TELEMETRY CONTAINER
-        ===================================================== */
-
-        QFrame#telemetryContainer {
-
-            border-left:
-                1px solid rgba(0, 180, 255, 40);
-        }
-
-        /* =====================================================
-           TELEMETRY CARDS
-        ===================================================== */
-
-        QFrame#telemetryCard {
-
-            background: rgba(14, 24, 38, 235);
-
-            border: 1px solid rgba(0, 200, 255, 70);
-
-            border-radius: 18px;
-        }
-
-        QLabel#telemetryTitle {
+        QLabel#paramTitle {
 
             color: rgb(0, 220, 255);
 
@@ -3166,117 +3025,97 @@ class TemperaturePage(QWidget):
             letter-spacing: 2px;
         }
 
-        /* =====================================================
-           VALUES
-        ===================================================== */
+        QLabel#paramValue {
 
-        QLabel#temperatureValue {
-
-            color: rgb(255, 120, 120);
-
-            font-size: 64px;
-
-            font-weight: 900;
-
-            letter-spacing: 2px;
-        }
-
-        QLabel#statusValue {
-
-            font-size: 28px;
-
-            font-weight: 900;
-
-            letter-spacing: 3px;
-        }
-
-        QLabel#footerLabel {
-
-            color: rgb(0, 220, 255);
-
-            font-size: 12px;
+            font-size: 16px;
 
             font-weight: 700;
 
-            letter-spacing: 2px;
+            color: white;
         }
 
-        /* =====================================================
-           SPINBOX
-        ===================================================== */
+        QLabel#paramValueBlue {
 
-        QDoubleSpinBox {
+            font-size: 16px;
 
-            background: transparent;
-
-            border: none;
+            font-weight: 700;
 
             color: white;
+        }
 
-            font-size: 30px;
+        QLabel#statusBadge {
+
+            background: rgba(0, 180, 255, 40);
+
+            border: 1px solid rgba(0, 220, 255, 120);
+
+            border-radius: 12px;
+
+            font-size: 14px;
 
             font-weight: 800;
 
-            padding-top: 12px;
-
-            padding-bottom: 12px;
-
-            min-height: 48px;
+            letter-spacing: 2px;
         }
 
-        /* =====================================================
-           SPINBOX BUTTONS
-        ===================================================== */
+        QFrame#paramCard {
 
-        QDoubleSpinBox::up-button {
+            background: rgba(14, 24, 38, 235);
 
+            border: 1px solid rgba(0, 200, 255, 70);
+
+            border-radius: 16px;
+        }
+
+        QDoubleSpinBox {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            padding-top: 6px;
+            padding-bottom: 2px;
+        }
+                           
+        QDoubleSpinBox::up-button{
             subcontrol-origin: border;
-
             subcontrol-position: top right;
 
-            width: 24px;
+            width: 22px;
 
             border: none;
 
             background: transparent;
 
-            margin-right: 8px;
+            margin-right: 6px;
         }
 
-        QDoubleSpinBox::down-button {
-
+        QDoubleSpinBox::down-button{
             subcontrol-origin: border;
-
             subcontrol-position: bottom right;
 
-            width: 24px;
+            width: 22px;
 
             border: none;
 
             background: transparent;
 
-            margin-right: 8px;
+            margin-right: 6px;
         }
 
-        QDoubleSpinBox::up-arrow {
-
+        QDoubleSpinBox::up-arrow{
             image: url(assets/arrow_up_cyan.svg);
 
             width: 14px;
             height: 14px;
         }
 
-        QDoubleSpinBox::down-arrow {
-
+        QDoubleSpinBox::down-arrow{
             image: url(assets/arrow_down_cyan.svg);
 
             width: 14px;
             height: 14px;
         }
-
-        /* =====================================================
-           PRIMARY BUTTON
-        ===================================================== */
 
         QPushButton {
 
@@ -3294,29 +3133,19 @@ class TemperaturePage(QWidget):
 
             border-radius: 16px;
 
-            color: white;
+            font-size: 14px;
 
-            font-size: 15px;
-
-            font-weight: 700;
+            font-weight: 800;
 
             letter-spacing: 2px;
-
-            padding: 12px 24px;
         }
 
         QPushButton:hover {
 
-            border: 1px solid rgb(100, 240, 255);
-
             background: rgba(0, 180, 255, 255);
         }
-
-        /* =====================================================
-           ENGINEERING BUTTON
-        ===================================================== */
-
-        QPushButton#engineeringButton {
+        
+        QPushButton#applyButton {
 
             background: qlineargradient(
                 x1:0,
@@ -3333,78 +3162,172 @@ class TemperaturePage(QWidget):
             color: white;
         }
 
-        QPushButton#engineeringButton:hover {
+        QPushButton#applyButton:hover {
 
             background: rgba(255, 170, 0, 220);
 
             border: 1px solid rgb(255, 220, 120);
         }
 
+        QPushButton#nextButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 110, 255, 220),
+                stop:1 rgba(0, 180, 255, 220)
+            );
+
+            border: 1px solid rgb(0, 220, 255);
+
+            color: white;
+        }
+
+        QPushButton#nextButton:hover {
+
+            background: rgb(0, 140, 255);
+        }
+
+        QFrame#monitorCard {
+
+            background: rgba(6, 18, 34, 200);
+
+            border: 1px solid rgba(120, 180, 255, 50);
+
+            border-radius: 18px;
+        }
+
+        QLabel#monitorIcon {
+
+            border: 2px solid rgb(0, 180, 255);
+
+            border-radius: 19px;
+
+            color: rgb(0, 180, 255);
+
+            font-size: 16px;
+
+            font-weight: 900;
+        }
+
+        QLabel#monitorTitle {
+
+            color: white;
+
+            font-size: 16px;
+        }
+
+        QLabel#monitorSubtitle {
+
+            color: rgb(130, 150, 170);
+
+            font-size: 12px;
+        }
+
+
         """)
 
-        # =====================================================
-        # STATE
-        # =====================================================
-
         self.state.changed.connect(
-            self._sync_from_state
+            self.sync_from_state
         )
 
-        self._sync_from_state()
+        self.sync_from_state()
 
-    # =========================================================
-    # TELEMETRY CARD
-    # =========================================================
-
-    def create_telemetry_card(
+    def create_param_widget(
         self,
-        title: str
+        title: str,
+        widget: QWidget
     ) -> QWidget:
 
-        card = QFrame()
+        container = QFrame()
 
-        card.setObjectName(
-            "telemetryCard"
+        container.setObjectName(
+            "paramCard"
         )
 
-        layout = QVBoxLayout(card)
+        layout = QVBoxLayout(container)
 
         layout.setContentsMargins(
-            18,
-            18,
-            18,
-            18
+            16,
+            14,
+            16,
+            14
         )
 
-        layout.setSpacing(10)
+        layout.setSpacing(4)
 
         label = QLabel(title)
 
         label.setObjectName(
-            "telemetryTitle"
+            "paramTitle"
         )
 
         layout.addWidget(label)
+        layout.addWidget(widget)
 
-        return card
-
-    # =========================================================
-    # APPLY TEMPERATURE
-    # =========================================================
+        return container
 
     def apply_temperature(self):
 
-        temp = float(
-            self.target_temp.value()
-        )
-
         self.controller.set_temperature(
-            temp
+            float(
+                self.target_input.value()
+            )
         )
 
-    # =========================================================
-    # BACKGROUND
-    # =========================================================
+    @Slot()
+    def sync_from_state(self):
+
+        p = self.state.params
+
+        self.current_temp.setText(
+            f"{p.current_temperature:.1f} °C"
+        )
+
+        self.target_temp.setText(
+            f"{p.target_temperature:.1f} °C"
+        )
+
+        self.target_input.blockSignals(True)
+
+        self.target_input.setValue(
+            float(p.target_temperature)
+        )
+
+        self.target_input.blockSignals(False)
+
+        status = str(
+            p.temperature_status
+        )
+
+        self.status_badge.setText(status)
+
+        colors = {
+            "IDLE": "#64748B",
+            "HEATING": "#F59E0B",
+            "STABLE": "#22C55E",
+            "COOLING": "#38BDF8",
+        }
+
+        color = colors.get(
+            status,
+            "#64748B"
+        )
+
+        self.status_badge.setStyleSheet(f'''
+            QLabel {{
+                background: rgba(0, 0, 0, 60);
+                border: 1px solid {color};
+                border-radius: 12px;
+                color: {color};
+                font-size: 14px;
+                font-weight: 800;
+                letter-spacing: 2px;
+            }}
+        ''')
 
     def paintEvent(self, event):
 
@@ -3435,106 +3358,3 @@ class TemperaturePage(QWidget):
         )
 
         super().paintEvent(event)
-
-    # =========================================================
-    # PAGE SHOW
-    # =========================================================
-
-    def showEvent(self, event):
-
-        super().showEvent(event)
-
-        self.controller.enable_temperature_reporting(
-            2
-        )
-
-    # =========================================================
-    # PAGE HIDE
-    # =========================================================
-
-    def hideEvent(self, event):
-
-        super().hideEvent(event)
-
-        self.controller.disable_temperature_reporting()
-
-    # =========================================================
-    # STATE UPDATE
-    # =========================================================
-
-    @Slot()
-    def _sync_from_state(self):
-
-        p = self.state.params
-
-        temp = float(
-            p.current_temperature
-        )
-
-        self.current_temp_label.setText(
-            f"{temp:.1f} °C"
-        )
-
-        self.target_temp.blockSignals(
-            True
-        )
-
-        self.target_temp.setValue(
-            float(p.target_temperature)
-        )
-
-        self.target_temp.blockSignals(
-            False
-        )
-
-        # =====================================================
-        # STATUS
-        # =====================================================
-
-        status = str(
-            p.temperature_status
-        )
-
-        self.status_label.setText(
-            status
-        )
-
-        if status == "HEATING":
-
-            color = (
-                "rgb(255, 80, 80)"
-            )
-
-        elif status == "STABLE":
-
-            color = (
-                "rgb(255, 180, 0)"
-            )
-
-        elif status == "COOLING":
-
-            color = (
-                "rgb(0, 220, 255)"
-            )
-
-        else:
-
-            color = (
-                "rgb(180, 180, 180)"
-            )
-
-        self.status_label.setStyleSheet(
-            f'''
-            QLabel {{
-                color: {color};
-                font-size: 28px;
-                font-weight: 900;
-                letter-spacing: 3px;
-            }}
-            '''
-        )
-    
-
-        
-
-

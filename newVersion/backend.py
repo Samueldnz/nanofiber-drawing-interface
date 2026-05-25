@@ -62,7 +62,7 @@ class Params:
     fiber_width: float = 40.0             # W (mm)
     fiber_spacing: float = 1.0            # S (mm) distância entre fibras
 
-    current_temperature: float = 0.0
+    current_temperature: float = 25.0
     target_temperature: float = 25.0
     temperature_status: str = "IDLE"
     temperature_reporting_enabled: bool = False
