@@ -374,7 +374,7 @@ class MachineController(QObject):
         ok T:31.4 /40.0 B:25.0 /0.0
         """
         current_match = re.search(
-            r"T\d*:([0-9]+(?:\.[0-9]+)?)",
+            r"T\d*:\s*([0-9]+(?:\.[0-9]+)?)",
             line
         )
         if not current_match:
@@ -397,7 +397,7 @@ class MachineController(QObject):
         )
 
         target_match = re.search(
-            r"T\d*:[0-9]+(?:\.[0-9]+)?\s*/([0-9]+(?:\.[0-9]+)?)",
+            r"T\d*:\s*[0-9]+(?:\.[0-9]+)?\s*/\s*([0-9]+(?:\.[0-9]+)?)",
             line
         )
 
@@ -915,6 +915,12 @@ class MachineController(QObject):
 
         # protected write
         with self._serial_lock:
+            # to avoid disyncronezed "ok" answer in the queue
+            while not self._response_queue.empty():
+                try:
+                    self._response_queue.get_nowait()
+                except Exception:
+                    break
 
             self.ser.write(
                 (command + "\n").encode("utf-8")
@@ -1069,6 +1075,7 @@ class MachineController(QObject):
         if self._drawing_thread is None:
             return
 
+        self._pause_requested.clear() # without this line can be paused forever 
         self._pause_event.set()
 
     def toggle_pause(self) -> None:
@@ -1201,6 +1208,9 @@ class MachineController(QObject):
         - Keeps cooling fan active
         - Preserves firmware/serial connection
         """
+        if self.ser is None:
+            self.log("Error: No connection to the printer")
+            return
 
         # =====================================================
         # INTERNAL EXECUTION STATE
@@ -1234,6 +1244,10 @@ class MachineController(QObject):
                     self.ser.write(
                         b"M410\n"
                     )
+
+                    self.ser.flush()
+
+                    time.sleep(0.1)
 
                     # -------------------------------------------------
                     # DISABLE HOTEND HEATER
@@ -1290,8 +1304,8 @@ class MachineController(QObject):
 
         if self._drawing_thread is not None:
 
-            try:
-
+            try:    
+                self._stop_event.set()
                 self._drawing_thread.quit()
                 self._drawing_thread.wait(2000)
 
@@ -1304,6 +1318,217 @@ class MachineController(QObject):
         self._drawing_thread = None
         self._worker = None
     
+    def recover_from_emergency_stop(self) -> bool:
+        """
+        Restore machine to a clean READY state after emergency stop.
+
+        Final state:
+        - firmware synchronized
+        - planner cleared
+        - machine homed
+        - heater OFF
+        - telemetry ON
+        - UI reset
+        - ready for manual operation
+        """
+
+        self.log(
+            "Starting recovery procedure..."
+        )
+
+        # =====================================================
+        # VALIDATE CONNECTION
+        # =====================================================
+
+        if self.ser is None or not self.ser.is_open:
+
+            self.log(
+                "Recovery failed: printer disconnected"
+            )
+
+            return False
+
+        try:
+
+            # =================================================
+            # RESET INTERNAL STATE
+            # =================================================
+
+            self.log(
+                "Resetting controller state..."
+            )
+
+            self._stop_event.clear()
+
+            self._pause_event.set()
+
+            self._pause_requested.clear()
+
+            self._graceful_stop_requested.clear()
+
+            self._is_retracted = False
+
+            # =================================================
+            # CLEAR RESPONSE QUEUE
+            # =================================================
+
+            while not self._response_queue.empty():
+
+                try:
+                    self._response_queue.get_nowait()
+
+                except Exception:
+                    break
+
+            # =================================================
+            # RESET THREAD REFERENCES
+            # =================================================
+
+            if self._drawing_thread is not None:
+
+                try:
+                    self._drawing_thread.quit()
+                    self._drawing_thread.wait(3000)
+
+                except Exception as e:
+                    self.log(f"Recovery thread cleanup failed: {e}")
+
+            self._drawing_thread = None
+            self._worker = None
+
+            # =================================================
+            # CLEAR FIRMWARE PLANNER
+            # =================================================
+
+            self.log(
+                "Synchronizing firmware..."
+            )
+
+            self._send_and_wait_ok(
+                "M400"
+            )
+
+            # =================================================
+            # DISABLE HEATER
+            # =================================================
+
+            self.log(
+                "Disabling heater..."
+            )
+
+            self._send_and_wait_ok(
+                "M104 S0"
+            )
+
+            # =================================================
+            # KEEP COOLING FAN ACTIVE
+            # =================================================
+
+            self._send_and_wait_ok(
+                "M106 S255"
+            )
+
+            # =================================================
+            # RESTORE DEFAULT MOTION MODES
+            # =================================================
+
+            self.log(
+                "Restoring motion modes..."
+            )
+
+            self._send_and_wait_ok(
+                "G90"
+            )  # absolute XY
+
+            self._send_and_wait_ok(
+                "M83"
+            )  # relative extrusion
+
+            self._send_and_wait_ok(
+                "G92 E0"
+            )
+
+            # =================================================
+            # HOME MACHINE
+            # =================================================
+
+            self.log(
+                "Homing machine..."
+            )
+
+            # relative mode
+            self._send_and_wait_ok("G91")
+
+            # lift safely
+            self._send_and_wait_ok("G0 Z10 F1500")
+
+            # back to absolute
+            self._send_and_wait_ok("G90")
+
+            self._send_and_wait_ok(
+                "G28",
+                timeout_s=120.0
+            )
+
+            # =================================================
+            # SAFE PARK POSITION
+            # =================================================
+
+            self.log(
+                "Parking toolhead..."
+            )
+
+            self._send_and_wait_ok(
+                "G0 X10 Y190 Z10 F3000"
+            )
+
+            # =================================================
+            # RESET TEMPERATURE STATE
+            # =================================================
+
+            self.state.set_target_temperature(
+                0.0
+            )
+
+            self.state.set_temperature_status(
+                "IDLE"
+            )
+
+            # =================================================
+            # RESTORE TEMPERATURE TELEMETRY
+            # =================================================
+
+            self.enable_temperature_reporting(2)
+
+            # =================================================
+            # RESET UI STATE
+            # =================================================
+
+            self.drawing_running_changed.emit(
+                False
+            )
+
+            self.drawing_paused_changed.emit(
+                False
+            )
+
+            self.log(
+                "Recovery completed successfully"
+            )
+
+            self.log(
+                "Machine ready"
+            )
+
+            return True
+
+        except Exception as e:
+
+            self.log(
+                f"Recovery failed: {e}"
+            )
+
+            return False
     
     # ---------- Safe area helpers ----------
     def _safe_center(self) -> tuple[float, float, float, float, float, float]:
@@ -1649,6 +1874,7 @@ class MachineController(QObject):
             self._is_retracted = True
 
         send("M400")
+        send("G92 E0") # reset the extrusor
 
 
 

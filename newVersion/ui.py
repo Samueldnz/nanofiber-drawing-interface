@@ -4303,6 +4303,8 @@ class ConnectionPage(QWidget):
             240,
             52
         )
+
+        self.btn_abort.setEnabled(False)
         
         actions_layout.addStretch()
 
@@ -4710,7 +4712,6 @@ class ConnectionPage(QWidget):
             )
 
             self.btn_connect.setEnabled(False)
-
             self.btn_disconnect.setEnabled(True)
 
         else:
@@ -4749,7 +4750,6 @@ class ConnectionPage(QWidget):
 
     @Slot()
     def _start(self) -> None:
-
         self.controller.start_drawing()
 
     @Slot(bool)
@@ -4763,6 +4763,10 @@ class ConnectionPage(QWidget):
         )
 
         self.btn_pause.setEnabled(
+            running
+        )
+
+        self.btn_abort.setEnabled(
             running
         )
 
