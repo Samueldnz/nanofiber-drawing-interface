@@ -4555,21 +4555,33 @@ class ConnectionPage(QWidget):
         }
 
         QTextEdit#logViewer QScrollBar:vertical {
-
-            background: transparent;
-
-            width: 10px;
-
-            margin: 8px;
+            background: rgba(0, 180, 255, 20);
+            width: 14px;
+            border-radius: 7px;
+            margin: 6px;
         }
 
         QTextEdit#logViewer QScrollBar::handle:vertical {
 
-            background: rgba(0, 180, 255, 120);
+            background: rgba(0, 220, 255, 180);
 
-            border-radius: 5px;
+            border: 1px solid rgba(120, 240, 255, 180);
+
+            border-radius: 6px;
 
             min-height: 40px;
+        }
+                           
+        QTextEdit#logViewer QScrollBar::add-line:vertical,
+        QTextEdit#logViewer QScrollBar::sub-line:vertical {
+            height: 0px;
+            background: none;
+            border: none;
+        }
+                           
+        QTextEdit#logViewer QScrollBar::add-page:vertical,
+        QTextEdit#logViewer QScrollBar::sub-page:vertical {
+            background: transparent;
         }
 
         QPushButton {
