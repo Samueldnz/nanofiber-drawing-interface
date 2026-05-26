@@ -262,6 +262,7 @@ class MachineController(QObject):
         self.ser: Optional["serial.Serial"] = None  # type: ignore[name-defined]
 
         self._is_retracted = False
+        self._emergency_stopped = False
 
         # drawing infra
         self._drawing_thread: Optional[QThread] = None
@@ -1217,6 +1218,7 @@ class MachineController(QObject):
         # =====================================================
 
         self._stop_event.set()
+        self._emergency_stopped = True
         self._pause_event.set()
 
         # =====================================================
@@ -1519,7 +1521,7 @@ class MachineController(QObject):
             self.log(
                 "Machine ready"
             )
-
+            self._emergency_stopped = False
             return True
 
         except Exception as e:

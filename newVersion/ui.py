@@ -4252,7 +4252,10 @@ class ConnectionPage(QWidget):
 
         actions = QWidget()
 
-        actions_layout = QHBoxLayout(actions)
+        actions_layout = QGridLayout(actions)
+        actions_layout.setColumnStretch(0, 1)
+        actions_layout.setColumnStretch(1, 1)
+        actions_layout.setColumnStretch(2, 1)
 
         actions_layout.setContentsMargins(
             0,
@@ -4291,6 +4294,21 @@ class ConnectionPage(QWidget):
 
         self.btn_pause.setEnabled(False)
 
+        self.btn_stop = QPushButton(
+            "STOP"
+        )
+
+        self.btn_stop.setObjectName(
+            "stopButton"
+        )
+
+        self.btn_stop.setFixedSize(
+            240,
+            52
+        )
+
+        self.btn_stop.setEnabled(False)
+
         self.btn_abort = QPushButton(
             "EMERGENCY STOP"
         )
@@ -4305,26 +4323,63 @@ class ConnectionPage(QWidget):
         )
 
         self.btn_abort.setEnabled(False)
+
+        self.btn_recover = QPushButton(
+            "RECOVER"
+        )
+
+        self.btn_recover.setObjectName(
+            "recoverButton"
+        )
+
+        self.btn_recover.setFixedSize(
+            240,
+            52
+        )
+
+        self.btn_recover.setEnabled(False)
+
+        actions_layout.setSpacing(16)
+        actions_layout.setHorizontalSpacing(32)
+
+        actions_layout.setVerticalSpacing(20)
         
-        actions_layout.addStretch()
-
+        # first row
         actions_layout.addWidget(
-            self.btn_abort
+            self.btn_abort,
+            0,
+            0,
+            alignment=Qt.AlignCenter
         )
 
-        actions_layout.addStretch()
-
         actions_layout.addWidget(
-            self.btn_pause
+            self.btn_pause,
+            0,
+            1,
+            alignment=Qt.AlignCenter
         )
 
-        actions_layout.addStretch()
-
         actions_layout.addWidget(
-            self.btn_start
+            self.btn_start,
+            0,
+            2,
+            alignment=Qt.AlignCenter
         )
 
-        actions_layout.addStretch()
+        # second row
+        actions_layout.addWidget(
+            self.btn_recover,
+            1,
+            0,
+            alignment=Qt.AlignCenter
+        )
+
+        actions_layout.addWidget(
+            self.btn_stop,
+            1,
+            2,
+            alignment=Qt.AlignCenter
+        )
 
         root.addWidget(actions)
 
@@ -4346,6 +4401,14 @@ class ConnectionPage(QWidget):
 
         self.btn_pause.clicked.connect(
             self.controller.toggle_pause
+        )
+
+        self.btn_stop.clicked.connect(
+            self.controller.stop_drawing
+        )
+
+        self.btn_recover.clicked.connect(
+            self._recover
         )
 
         self.btn_abort.clicked.connect(
@@ -4594,17 +4657,17 @@ class ConnectionPage(QWidget):
                 x2:1,
                 y2:0,
 
-                stop:0 rgba(255, 140, 0, 180),
-                stop:1 rgba(255, 180, 0, 180)
+                stop:0 rgba(220, 165, 0, 220),
+                stop:1 rgba(245, 195, 0, 220)
             );
 
-            border: 1px solid rgb(255, 190, 50);
+            border: 1px solid rgb(255, 215, 90);
 
             color: white;
         }
                            
         QPushButton#pauseButton:hover {
-            background: rgba(255, 170, 0, 220);
+            background: rgba(255, 200, 0, 255);
 
             border: 1px solid rgb(255, 220, 120);
         }
@@ -4629,7 +4692,54 @@ class ConnectionPage(QWidget):
         QPushButton#abortButton:hover {
             background: rgba(170, 20, 28, 255);
         }
+                           
+        QPushButton#recoverButton {
 
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(0, 120, 220, 220),
+                stop:1 rgba(0, 200, 255, 220)
+            );
+
+            border: 1px solid rgb(100, 220, 255);
+
+            color: white;
+        }
+
+        QPushButton#recoverButton:hover {
+
+            background: rgba(0, 190, 255, 255);
+
+            border: 1px solid rgb(180, 240, 255);
+        }
+
+        QPushButton#stopButton {
+
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
+
+                stop:0 rgba(180, 100, 0, 220),
+                stop:1 rgba(255, 150, 0, 220)
+            );
+
+            border: 1px solid rgb(255, 190, 80);
+
+            color: white;
+        }
+
+        QPushButton#stopButton:hover {
+
+            background: rgba(255, 160, 0, 255);
+
+            border: 1px solid rgb(255, 220, 120);
+        }                   
         QPushButton#infoButton {
 
             background: qlineargradient(
@@ -4752,6 +4862,19 @@ class ConnectionPage(QWidget):
     def _start(self) -> None:
         self.controller.start_drawing()
 
+    @Slot()
+    def _recover(self) -> None:
+
+        ok = self.controller.recover_from_emergency_stop()
+
+        if not ok:
+
+            QMessageBox.critical(
+                self,
+                "Recovery Error",
+                "Recovery procedure failed"
+            )
+
     @Slot(bool)
     def _on_drawing_running(
         self,
@@ -4766,8 +4889,18 @@ class ConnectionPage(QWidget):
             running
         )
 
+        self.btn_stop.setEnabled(
+            running
+        )
+
         self.btn_abort.setEnabled(
             running
+        )
+
+        # recover only available when machine
+        # is NOT drawing
+        self.btn_recover.setEnabled(
+            self.controller._emergency_stopped
         )
 
         if not running:
@@ -4823,3 +4956,6 @@ class ConnectionPage(QWidget):
         )
 
         super().paintEvent(event)
+
+
+        
