@@ -41,7 +41,6 @@ class Params:
     pause_ms: int = 0                # ms (G4 P...)
     z_offset: float = 0.4            # mm
 
-    afterdrop: bool = True
     clean: bool = True
 
     # --- CustomCentered safe bounds (seu retângulo seguro) ---
@@ -91,7 +90,6 @@ class AppState(QObject):
             "Pause (ms)": int(p.pause_ms),
             "Z-Offset": float(p.z_offset),
 
-            "Afterdrop": bool(p.afterdrop),
             "Clean": bool(p.clean),
 
             "Safe X Min": float(p.safe_x_min),
@@ -135,19 +133,6 @@ class AppState(QObject):
         p.z_hop = float(data.get("Z-Hop", p.z_hop))
         p.pause_ms = int(data.get("Pause (ms)", p.pause_ms))
         p.z_offset = float(data.get("Z-Offset", p.z_offset))
-
-        p.afterdrop = str(
-            data.get(
-                "Afterdrop",
-                p.afterdrop
-            )
-        ).lower() == "true"
-        p.clean = str(
-            data.get(
-                "Clean",
-                p.clean
-            )
-        ).lower() == "true"
 
         p.safe_x_min = float(data.get("Safe X Min", p.safe_x_min))
         p.safe_x_max = float(data.get("Safe X Max", p.safe_x_max))
@@ -515,9 +500,6 @@ class MachineController(QObject):
 
                 "Pause":
                     f"{p.pause_ms} ms",
-
-                "Afterdrop":
-                    "on" if p.afterdrop else "off",
 
                 "Clean":
                     "on" if p.clean else "off",

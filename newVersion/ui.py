@@ -1067,7 +1067,7 @@ class MainWindow(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemIsEnabled if enabled else item.flags() & ~Qt.ItemIsEnabled)
 
     def go(self, name: str) -> None:
-        mapping = {"Welcome": 0, "Fiber Layout": 1, "Draw Settings": 2, "Temperature": 3, "Summary": 4, "Log": 5}
+        mapping = {"Welcome": 0, "Fiber Layout": 1, "Draw Settings": 2, "Temperature": 3, "Summary": 4, "Connection": 5}
         self.sidebar.setCurrentRow(mapping[name])
         # its the same as: user clicked in Draw, so the sidebar changes and emits a signal, the Qt gets this signal and changes the page - see a full explanation on helpfullDocuments/aboutCurrentVersionFunctions
 
@@ -2599,7 +2599,7 @@ class DrawSettingsPage(QWidget):
         self.btn_afterdrop.blockSignals(True)
 
         self.btn_afterdrop.setChecked(
-            bool(p.afterdrop)
+            bool(p.clean)
         )
 
         self.btn_afterdrop.blockSignals(False)
@@ -3475,11 +3475,9 @@ class SummaryPage(QWidget):
 
         draw_params = [
             ("Speed", "speed"),
-            ("Droplet Amount", "droplet_amount"),
             ("Pause", "pause_ms"),
             ("Z-Hop", "z_hop"),
             ("Z-Offset", "z_offset"),
-            ("Afterdrop", "afterdrop"),
             ("Clean", "clean"),
         ]
 
@@ -3589,7 +3587,7 @@ class SummaryPage(QWidget):
 
         self.btn_load.setFixedSize(
             170,
-            54
+            42
         )
 
         self.btn_save_pdf = QPushButton(
@@ -3602,7 +3600,7 @@ class SummaryPage(QWidget):
 
         self.btn_save_pdf.setFixedSize(
             190,
-            54
+            42
         )
 
         self.btn_save_project = QPushButton(
@@ -3615,7 +3613,7 @@ class SummaryPage(QWidget):
 
         self.btn_save_project.setFixedSize(
             240,
-            54
+            42
         )
 
         actions_layout.addWidget(
@@ -3666,6 +3664,10 @@ class SummaryPage(QWidget):
         self.btn_next.setFixedSize(
             220,
             54
+        )
+
+        self.btn_next.clicked.connect(
+            lambda: self.mw.go("Connection")
         )
 
         next_layout.addStretch()
@@ -3797,44 +3799,72 @@ class SummaryPage(QWidget):
 
         QPushButton#loadButton {
 
-            background: rgba(22, 26, 34, 180);
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
 
-            border: 1px solid rgba(110, 130, 160, 90);
+                stop:0 rgba(0, 120, 220, 220),
+                stop:1 rgba(0, 200, 255, 220)
+            );
 
-            color: rgb(210, 220, 235);
+            border: 1px solid rgb(100, 220, 255);
+
+            color: white;
         }
 
         QPushButton#loadButton:hover {
 
-            background: rgba(70, 90, 120, 80);
+            background: rgba(0, 190, 255, 255);
+
+            border: 1px solid rgb(180, 240, 255);
         }
 
         QPushButton#pdfButton {
 
-            background: rgba(42, 24, 6, 220);
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
 
-            border: 1px solid rgba(255, 170, 40, 180);
+                stop:0 rgba(0, 120, 220, 220),
+                stop:1 rgba(0, 200, 255, 220)
+            );
 
-            color: rgb(255, 230, 190);
+            border: 1px solid rgb(100, 220, 255);
+
+            color: white;
         }
 
         QPushButton#pdfButton:hover {
 
-            background: rgba(255, 170, 40, 60);
+            background: rgba(0, 190, 255, 255);
+
+            border: 1px solid rgb(180, 240, 255);
         }
 
         QPushButton#saveButton {
 
-            background: rgba(20, 120, 60, 220);
+            background: qlineargradient(
+                x1:0,
+                y1:0,
+                x2:1,
+                y2:0,
 
-            border: 1px solid rgb(80, 255, 160);
+                stop:0 rgba(0, 150, 90, 220),
+                stop:1 rgba(0, 210, 120, 220)
+            );
+
+            border: 1px solid rgb(120, 255, 180);
 
             color: white;
         }
 
         QPushButton#saveButton:hover {
 
-            background: rgba(40, 180, 90, 240);
+            background: rgba(20, 170, 90, 255);
         }
 
         QPushButton#nextButton {
@@ -3957,9 +3987,6 @@ class SummaryPage(QWidget):
 
             "z_offset":
                 f"{p.z_offset:.3f} mm",
-
-            "afterdrop":
-                "ON" if p.afterdrop else "OFF",
 
             "clean":
                 "ON" if p.clean else "OFF",
