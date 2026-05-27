@@ -1170,118 +1170,395 @@ class MainWindow(QMainWindow):
         self.player.stop()
 
 class WelcomePage(QWidget):
-    def __init__(self, mw: MainWindow) -> None:
+
+    def __init__(
+        self,
+        mw: MainWindow
+    ) -> None:
+
         super().__init__()
+
         self.mw = mw
+
+        # =====================================================
+        # BACKGROUND
+        # =====================================================
 
         self.bg = QPixmap(
             "assets/optimus_bg.jpeg"
         )
 
+        # =====================================================
+        # ROOT
+        # =====================================================
+
         root = QVBoxLayout(self)
 
-        root.setContentsMargins(40, 40, 40, 40)
+        root.setContentsMargins(
+            60,
+            40,
+            60,
+            40
+        )
 
-        # top spacer
-        root.addStretch()
+        root.setSpacing(0)
+
+        # =====================================================
+        # TOP STATUS
+        # =====================================================
+
+        top_row = QHBoxLayout()
+
+        top_row.setSpacing(12)
+
+        status_dot = QLabel()
+
+        status_dot.setFixedSize(14, 14)
+
+        status_dot.setStyleSheet("""
+            QLabel {
+
+                background: rgb(0, 255, 180);
+
+                border-radius: 7px;
+
+                border: 1px solid rgb(120, 255, 220);
+            }
+        """)
+
+        status_label = QLabel(
+            "SYSTEM READY"
+        )
+
+        status_label.setStyleSheet("""
+            QLabel {
+
+                color: rgb(0, 255, 180);
+
+                font-size: 13px;
+
+                font-weight: 700;
+
+                letter-spacing: 4px;
+            }
+        """)
+
+        top_row.addWidget(status_dot)
+
+        top_row.addWidget(status_label)
+
+        top_row.addStretch()
+
+        root.addLayout(top_row)
+
+        root.addSpacing(80)
+
+        # =====================================================
+        # CENTER AREA
+        # =====================================================
+
 
         hero = QFrame()
 
-        hero.setMaximumWidth(720)
+        hero.setMaximumWidth(920)
 
-        hero.setStyleSheet(f"""
-            QFrame {{
-                background-color: rgba(15, 23, 42, 205);
-                border: 1px solid rgba(255,255,255,20);
-                border-radius: 24px;
-            }}
+        hero.setStyleSheet("""
+            QFrame {
+
+                background: rgba(6, 14, 28, 175);
+
+                border: 1px solid rgba(0, 180, 255, 60);
+
+                border-radius: 28px;
+            }
         """)
 
         shadow = QGraphicsDropShadowEffect()
 
-        shadow.setBlurRadius(40)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 180))
+        shadow.setBlurRadius(38)
 
-        hero.setGraphicsEffect(shadow)
+        shadow.setOffset(0, 0)
 
-        hero_layout = QVBoxLayout(hero)
-
-        hero_layout.setContentsMargins(50, 50, 50, 50)
-
-        hero_layout.setSpacing(24)
-
-
-        title = _title_label("OPTIMUS PRIME")
-
-        title.setAlignment(Qt.AlignCenter)
-
-        title.setStyleSheet(f"""
-            QLabel {{
-                color: white;
-                background: transparent;
-                letter-spacing: 4px;
-                border: none;
-            }}
-        """)
-
-        subtitle = _section_label(
-            "MicroFiber Machine Interface"
+        shadow.setColor(
+            QColor(
+                0,
+                180,
+                255,
+                45
+            )
         )
 
-        subtitle.setAlignment(Qt.AlignCenter)
+        hero.setGraphicsEffect(
+            shadow
+        )
 
-        desc = _subtle_label(
-            "Advanced robotics interface "
+        center = QVBoxLayout(hero)
+
+        center.setContentsMargins(
+            60,
+            36,
+            60,
+            36
+        )
+
+        center.setSpacing(28)
+
+        # =====================================================
+        # SUBTITLE
+        # =====================================================
+
+        subtitle = QLabel(
+            "MICROFIBER MACHINE INTERFACE"
+        )
+
+        subtitle.setAlignment(
+            Qt.AlignCenter
+        )
+
+        subtitle.setStyleSheet("""
+            QLabel {
+
+                color: rgb(0, 200, 255);
+
+                font-size: 22px;
+
+                font-weight: 700;
+
+                letter-spacing: 5px;
+
+                background: transparent;
+                               
+                border: none;
+            }
+        """)
+
+        # =====================================================
+        # DESCRIPTION
+        # =====================================================
+
+        desc = QLabel(
+            "Advanced industrial robotics interface "
             "for precision microfiber fabrication "
             "and machine control."
         )
 
-        desc.setAlignment(Qt.AlignCenter)
+        desc.setWordWrap(True)
 
-        desc.setMaximumWidth(520)
-
-        btn_row = QHBoxLayout()
-
-        btn_row.setSpacing(18)
-
-        self.btn_new = _primary_button("New")
-        self.btn_load = _secondary_button("Load")
-        self.btn_info = _secondary_button("Info")
-
-        self.btn_new.setFixedSize(180, 48)
-        self.btn_load.setFixedSize(180, 48)
-        self.btn_info.setFixedSize(120, 42)
-
-        btn_row.addWidget(self.btn_new)
-        btn_row.addWidget(self.btn_load)
-
-        hero_layout.addWidget(title)
-        hero_layout.addWidget(subtitle)
-        hero_layout.addWidget(desc)
-
-        hero_layout.addSpacing(12)
-
-        hero_layout.addLayout(btn_row)
-
-        hero_layout.addWidget(
-            self.btn_info,
+        desc.setContentsMargins(
+            20,
             0,
-            Qt.AlignCenter,
+            20,
+            0
         )
 
-        # center panel
+        desc.setAlignment(
+            Qt.AlignCenter
+        )
+
+        desc.setStyleSheet("""
+            QLabel {
+
+                color: rgba(235, 245, 255, 230);
+
+                font-size: 16px;
+                           
+                font-weight: 500;
+
+                line-height: 1.5em;
+
+                background: transparent;
+                           
+                border: none;
+            }
+        """)
+
+        # =====================================================
+        # BUTTONS
+        # =====================================================
+
+        btn_row = QVBoxLayout()
+
+        btn_row.setSpacing(20)
+
+        btn_row.setAlignment(
+            Qt.AlignCenter
+        )
+
+        self.btn_new = QPushButton(
+            "NEW PROJECT"
+        )
+
+        self.btn_new.setObjectName("startButton")
+
+        self.btn_new.setFixedSize(
+            220, 52
+        )
+
+        self.btn_load = QPushButton(
+            "LOAD PROJECT"
+        )
+
+        self.btn_load.setObjectName("loadButton")
+
+        self.btn_load.setFixedSize(
+            220,
+            42
+        )
+
+        self.btn_info = QPushButton(
+            "SYSTEM INFO"
+        )
+
+        self.btn_info.setObjectName("infoButton")
+
+        self.btn_info.setFixedSize(
+            220,
+            42
+        )
+
+        btn_row.addWidget(
+            self.btn_new
+        )
+
+        btn_row.addWidget(
+            self.btn_load
+        )
+
+        btn_row.addWidget(
+            self.btn_info
+        )
+
+        # =====================================================
+        # BUILD CENTER
+        # =====================================================
+
+        center.addWidget(
+            subtitle
+        )
+
+        center.addSpacing(12)
+
+        center.addWidget(
+            desc,
+            Qt.AlignCenter
+        )
+
+        center.addSpacing(18)
+
+        center.addLayout(
+            btn_row
+        )
+
         root.addWidget(
             hero,
             0,
-            Qt.AlignCenter,
+            Qt.AlignCenter
         )
 
-        # bottom spacer
         root.addStretch()
-        self.btn_new.clicked.connect(self.mw.start_new_project)
-        self.btn_load.clicked.connect(self.mw.load_project_dialog)
-        self.btn_info.clicked.connect(self.mw.show_info)
+
+        self.setStyleSheet("""
+
+            QPushButton {
+
+                border-radius: 18px;
+
+                font-size: 14px;
+
+                font-weight: 800;
+
+                letter-spacing: 3px;
+            }
+                           
+            QPushButton#startButton {
+
+                background: qlineargradient(
+                    x1:0,
+                    y1:0,
+                    x2:1,
+                    y2:0,
+
+                    stop:0 rgba(0, 150, 90, 220),
+                    stop:1 rgba(0, 210, 120, 220)
+                );
+
+                border: 1px solid rgb(120, 255, 180);
+
+                color: white;
+            }
+                            
+            QPushButton#startButton:hover {
+
+                background: rgba(20, 170, 90, 255);
+            }
+                           
+            QPushButton#loadButton {
+
+                background: qlineargradient(
+                    x1:0,
+                    y1:0,
+                    x2:1,
+                    y2:0,
+
+                    stop:0 rgba(0, 120, 220, 220),
+                    stop:1 rgba(0, 200, 255, 220)
+                );
+                           
+                font-size: 12px;
+
+                border: 1px solid rgb(100, 220, 255);
+
+                color: white;
+            }
+
+            QPushButton#loadButton:hover {
+
+                background: rgba(0, 190, 255, 255);
+
+                border: 1px solid rgb(180, 240, 255);
+            }
+
+            QPushButton#infoButton {
+
+                background: qlineargradient(
+                    x1:0,
+                    y1:0,
+                    x2:1,
+                    y2:0,
+
+                    stop:0 rgba(0, 120, 220, 220),
+                    stop:1 rgba(0, 200, 255, 220)
+                );
+
+                border: 1px solid rgb(100, 220, 255);
+                font-size: 12px;
+                color: white;
+            }
+
+            QPushButton#infoButton:hover {
+
+                background: rgba(0, 190, 255, 255);
+
+                border: 1px solid rgb(180, 240, 255);
+            }
+
+        """)
+
+        # =====================================================
+        # CONNECTIONS
+        # =====================================================
+
+        self.btn_new.clicked.connect(
+            self.mw.start_new_project
+        )
+
+        self.btn_load.clicked.connect(
+            self.mw.load_project_dialog
+        )
+
+        self.btn_info.clicked.connect(
+            self.mw.show_info
+        )
 
     def paintEvent(self, event):
 
