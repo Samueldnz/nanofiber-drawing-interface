@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QStackedWidget, QMessageBox, QFileDialog,
     QComboBox, QSlider, QDoubleSpinBox, QGroupBox, QGridLayout,
-    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect, QSizePolicy,  QScrollArea
+    QRadioButton, QButtonGroup, QTextEdit, QFrame, QSpinBox, QCheckBox,  QGraphicsDropShadowEffect, QSizePolicy,  QScrollArea, QSpacerItem
 )
 
 from PySide6.QtMultimedia import (
@@ -1919,23 +1919,6 @@ class DrawSettingsPage(QWidget):
         )
 
         # =========================================================
-        # DROPLET AMOUNT
-        # =========================================================
-
-        self.amount = QDoubleSpinBox()
-
-        self.amount.setDecimals(3)
-        self.amount.setRange(0.0, 1000.0)
-        self.amount.setSingleStep(0.1)
-
-        self.amount.valueChanged.connect(
-            lambda v: self.state.set_param(
-                "droplet_amount",
-                float(v)
-            )
-        )
-
-        # =========================================================
         # PAUSE
         # =========================================================
 
@@ -1991,27 +1974,6 @@ class DrawSettingsPage(QWidget):
         # TOGGLE BUTTONS
         # =========================================================
 
-        self.btn_afterdrop = QPushButton(
-            "AFTERDROP"
-        )
-
-        self.btn_afterdrop.setObjectName(
-            "toggleButton"
-        )
-
-        self.btn_afterdrop.setCheckable(True)
-
-        self.btn_afterdrop.toggled.connect(
-            lambda v: self.state.set_param(
-                "afterdrop",
-                bool(v)
-            )
-        )
-
-        self.btn_afterdrop.toggled.connect(
-            lambda _: self._update_toggle_texts()
-        )
-
         self.btn_clean = QPushButton(
             "CLEAN"
         )
@@ -2045,10 +2007,8 @@ class DrawSettingsPage(QWidget):
             "secondaryAction"
         )
 
-        self.btn_test_z.setFixedSize(240, 52)
-
         self.btn_test_z.clicked.connect(
-            self.controller.test_zoffset
+            self._test_zoffset
         )
 
         # =========================================================
@@ -2080,18 +2040,39 @@ class DrawSettingsPage(QWidget):
 
         grid.addWidget(
             self.create_param_widget(
-                "Droplet Amount",
-                self.amount
+                "Pause (ms)",
+                self.pause_ms
             ),
             1,
             0
         )
 
+        ghost = QFrame()
+
+        ghost.setObjectName(
+            "ghostCard"
+        )
+
+        ghost_layout = QVBoxLayout(ghost)
+
+        ghost_layout.setContentsMargins(
+            18, 18, 18, 18
+        )
+
+        ghost_layout.addStretch()
+
+        ghost_spacer = QWidget()
+
+        ghost_spacer.setFixedHeight(52)
+
+        ghost_layout.addWidget(
+            ghost_spacer
+        )
+
+        ghost_layout.addStretch()
+
         grid.addWidget(
-            self.create_param_widget(
-                "Pause (ms)",
-                self.pause_ms
-            ),
+            ghost,
             1,
             1
         )
@@ -2106,14 +2087,6 @@ class DrawSettingsPage(QWidget):
         )
 
         grid.addWidget(
-            self.create_toggle_widget(
-                self.btn_afterdrop
-            ),
-            2,
-            1
-        )
-
-        grid.addWidget(
             self.create_param_widget(
                 "Z-Offset (mm)",
                 self.zoffset
@@ -2124,27 +2097,27 @@ class DrawSettingsPage(QWidget):
 
         grid.addWidget(
             self.create_toggle_widget(
-                self.btn_clean
+                self.btn_test_z
             ),
             3,
             1
         )
 
-        # =========================================================
-        # TEST BUTTON ROW
-        # =========================================================
-
-        test_row = QHBoxLayout()
-
-        test_row.addWidget(
-            self.btn_test_z,
-            alignment=Qt.AlignLeft
+        grid.addWidget(
+            self.create_toggle_widget(
+                self.btn_clean
+            ),
+            2,
+            1
         )
 
-        test_row.addStretch()
-
-        grid.addLayout(
-            test_row,
+        grid.addItem(
+            QSpacerItem(
+                0,
+                40,
+                QSizePolicy.Minimum,
+                QSizePolicy.Fixed
+            ),
             4,
             0,
             1,
@@ -2166,7 +2139,7 @@ class DrawSettingsPage(QWidget):
 
         grid.addLayout(
             next_row,
-            5,
+            6,
             0,
             1,
             2
@@ -2187,6 +2160,44 @@ class DrawSettingsPage(QWidget):
             font-family: Inter;
             font-size: 14px;
         }
+                           
+        QMessageBox {
+
+            background: rgb(14, 20, 32);
+
+            color: white;
+        }
+        
+        QMessageBox QLabel {
+
+            color: white;
+
+            font-size: 14px;
+        }
+                           
+        QMessageBox QPushButton {
+
+            min-width: 90px;
+
+            min-height: 30px;
+
+            padding: 2px 10px;
+
+            background: rgba(20, 28, 44, 240);
+
+            border: 1px solid rgb(0, 180, 255);
+
+            border-radius: 10px;
+
+            color: white;
+
+            font-weight: 600;
+        }
+        
+        QMessageBox QPushButton:hover {
+
+            background: rgba(0, 180, 255, 60);
+        }  
 
         /* =====================================================
            PANEL
@@ -2498,10 +2509,6 @@ class DrawSettingsPage(QWidget):
     
     def _update_toggle_texts(self):
 
-        self.btn_afterdrop.setText(
-            f"AFTERDROP • {'ON' if self.btn_afterdrop.isChecked() else 'OFF'}"
-        )
-
         self.btn_clean.setText(
             f"CLEAN • {'ON' if self.btn_clean.isChecked() else 'OFF'}"
         )
@@ -2572,6 +2579,24 @@ class DrawSettingsPage(QWidget):
 
         super().paintEvent(event)
 
+    @Slot()
+    def _test_zoffset(self) -> None:
+
+        try:
+            self.controller.test_zoffset()
+
+        except RuntimeError as e:
+
+            QMessageBox.critical(
+                self,
+                "Printer Not Connected",
+                str(e)
+            )
+
+            self.mw.go(
+                "Connection"
+            )
+
     # =============================================================
     # STATE UPDATE
     # =============================================================
@@ -2595,14 +2620,6 @@ class DrawSettingsPage(QWidget):
             w.setValue(val)
 
             w.blockSignals(False)
-
-        self.btn_afterdrop.blockSignals(True)
-
-        self.btn_afterdrop.setChecked(
-            bool(p.clean)
-        )
-
-        self.btn_afterdrop.blockSignals(False)
 
         self.btn_clean.blockSignals(True)
 
@@ -3018,7 +3035,7 @@ class TemperaturePage(QWidget):
         QWidget {
             color: white;
             font-family: Inter;
-        }
+        }           
 
         QFrame#controlPanel,
         QFrame#reactorPanel {
@@ -3252,8 +3269,6 @@ class TemperaturePage(QWidget):
 
             font-size: 12px;
         }
-
-
         """)
 
         self.state.changed.connect(
@@ -3687,6 +3702,7 @@ class SummaryPage(QWidget):
             color: white;
             font-family: Inter;
         }
+                           
 
         QLabel#pageTitle {
 
@@ -4526,6 +4542,15 @@ class ConnectionPage(QWidget):
             background: rgba(8, 15, 28, 220);
 
             border: 1px solid rgba(0, 180, 255, 80);
+
+            border-radius: 24px;
+        }
+                           
+        QFrame#ghostCard {
+
+            background: rgba(0, 0, 0, 20);
+
+            border: 1px dashed rgba(0, 180, 255, 35);
 
             border-radius: 24px;
         }

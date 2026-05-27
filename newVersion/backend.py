@@ -2100,6 +2100,14 @@ class MachineController(QObject):
         self.log("Movement test")
 
     def test_zoffset(self) -> None:
+        # Ensure printer is connected
+        if self.ser is None:
+            self.log("Error: No connection to the printer")
+            
+            raise RuntimeError(
+                "Printer is not connected"
+            )
+        
         self.log("Test Z-Offset")
         send = self._send_checked
         send(f"G1 Z{self.state.params.z_offset:.3f} F1000")
