@@ -2843,15 +2843,15 @@ class TemperaturePage(QWidget):
         # =====================================================
 
         self.btn_apply = QPushButton(
-            "APPLY TARGET"
+            "APPLY TARGET °C"
         )
 
         self.btn_apply.setObjectName(
             "applyButton"
         )
 
-        self.btn_apply.setFixedHeight(54)
-        self.btn_apply.setFixedWidth(300)
+        self.btn_apply.setFixedHeight(42)
+        self.btn_apply.setFixedWidth(240)
 
         self.btn_apply.clicked.connect(
             self.apply_temperature
@@ -3035,7 +3035,42 @@ class TemperaturePage(QWidget):
         QWidget {
             color: white;
             font-family: Inter;
-        }           
+        }          
+
+        QMessageBox {
+
+            background: rgb(14, 20, 32);
+
+            color: white;
+        }
+
+        QMessageBox QLabel {
+
+            color: white;
+
+            font-size: 14px;
+
+            font-weight: 500;
+        }
+
+        QMessageBox QPushButton {
+
+            min-width: 90px;
+
+            min-height: 30px;
+
+            padding: 2px 10px;
+
+            background: rgba(20, 28, 44, 240);
+
+            border: 1px solid rgb(0, 180, 255);
+
+            border-radius: 10px;
+
+            color: white;
+
+            font-weight: 600;
+        } 
 
         QFrame#controlPanel,
         QFrame#reactorPanel {
@@ -3313,11 +3348,23 @@ class TemperaturePage(QWidget):
 
     def apply_temperature(self):
 
-        self.controller.set_temperature(
-            float(
-                self.target_input.value()
+        try:
+            self.controller.set_temperature(
+                float(
+                    self.target_input.value()
+                )
             )
-        )
+        except RuntimeError as e:
+
+            QMessageBox.critical(
+                self,
+                "Printer Not Connected",
+                str(e)
+            )
+
+            self.mw.go(
+                "Connection"
+            ) 
 
     @Slot()
     def sync_from_state(self):

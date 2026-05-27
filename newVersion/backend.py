@@ -328,6 +328,15 @@ class MachineController(QObject):
         self,
         target: float
     ):
+        if self.ser is None or not self.ser.is_open:
+
+            self.log(
+                "Error: No connection to the printer"
+            )
+
+            raise RuntimeError(
+                "Printer is not connected"
+            )
 
         target = max(
             0.0,
