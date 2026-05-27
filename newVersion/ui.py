@@ -692,10 +692,16 @@ class RectanglePreview(QWidget):
 
     def paintEvent(self, event) -> None:
 
-        BED_W = 170.0
-        BED_H = 250.0
-
         p = self.state.params
+
+        sx0 = float(p.safe_x_min)
+        sx1 = float(p.safe_x_max)
+
+        sy0 = float(p.safe_y_min)
+        sy1 = float(p.safe_y_max)
+
+        SAFE_W = sx1 - sx0
+        SAFE_H = sy1 - sy0
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
@@ -716,17 +722,17 @@ class RectanglePreview(QWidget):
         # KEEP BED ASPECT RATIO
         # =========================================================
 
-        bed_ratio = BED_W / BED_H
+        safe_ratio = SAFE_W / SAFE_H
         area_ratio = avail_w / avail_h
 
-        if area_ratio > bed_ratio:
+        if area_ratio > safe_ratio:
             # limited by height
             draw_h = avail_h
-            draw_w = draw_h * bed_ratio
+            draw_w = draw_h * safe_ratio
         else:
             # limited by width
             draw_w = avail_w
-            draw_h = draw_w / bed_ratio
+            draw_h = draw_w / safe_ratio
 
         ox = (self.width() - draw_w) / 2.0
         oy = (self.height() - draw_h) / 2.0
@@ -736,10 +742,10 @@ class RectanglePreview(QWidget):
         # =========================================================
 
         def mx(x_mm: float) -> float:
-            return ox + (x_mm / BED_W) * draw_w
+            return ox + ((x_mm - sx0) / SAFE_W) * draw_w
 
         def my(y_mm: float) -> float:
-            return oy + draw_h - (y_mm / BED_H) * draw_h
+            return oy + draw_h - ((y_mm - sy0) / SAFE_H) * draw_h
 
         # =========================================================
         # PANEL BACKGROUND
@@ -760,18 +766,12 @@ class RectanglePreview(QWidget):
         # SAFE AREA
         # =========================================================
 
-        sx0 = float(p.safe_x_min)
-        sx1 = float(p.safe_x_max)
-        sy0 = float(p.safe_y_min)
-        sy1 = float(p.safe_y_max)
-
-        rx = mx(sx0)
-        ry = my(sy1)
-
-        rw = mx(sx1) - mx(sx0)
-        rh = my(sy0) - my(sy1)
-
-        safe_rect = QRectF(rx, ry, rw, rh)
+        safe_rect = QRectF(
+            ox,
+            oy,
+            draw_w,
+            draw_h
+        )
 
         painter.setPen(QPen(QColor(120, 180, 255), 2))
         painter.setBrush(Qt.NoBrush)
@@ -782,12 +782,14 @@ class RectanglePreview(QWidget):
         # CENTER RECTANGLE (RESPONSIVE)
         # =========================================================
 
-        center_w = rw * 0.28
-        center_h = rh * 0.18
+        sample_size_mm = 80.0
+
+        center_w = (sample_size_mm / SAFE_W) * draw_w
+        center_h = (sample_size_mm / SAFE_H) * draw_h
 
         center_rect = QRectF(
-            rx + (rw - center_w) / 2,
-            ry + (rh - center_h) / 2,
+            ox + (draw_w - center_w) / 2,
+            oy + (draw_h - center_h) / 2,
             center_w,
             center_h
         )

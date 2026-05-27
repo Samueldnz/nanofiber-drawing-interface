@@ -44,10 +44,11 @@ class Params:
     clean: bool = True
 
     # --- CustomCentered safe bounds (seu retângulo seguro) ---
-    safe_x_min: float = 0
-    safe_x_max: float = 170
-    safe_y_min: float = 20.0
-    safe_y_max: float = 250.0
+    safe_x_min: float = 45     # ---- offset centralizador
+    safe_x_max: float = 227
+
+    safe_y_min: float = 33     # ----- offset centralizador
+    safe_y_max: float = 180
 
     # --- Rectangle anchor (bottom-left corner of draw rectangle) ---
     start_x: float = 0
@@ -1575,27 +1576,30 @@ class MachineController(QObject):
         """
 
         # machine compensation
-        start_y += 20  #eventually this should become: machine_y_offset, but need test first
+        x_min, x_max, y_min, y_max, _, _ = self._safe_center()
+
+        machine_x = x_min + start_x
+        machine_y = y_min + start_y
 
         if axis == "horizontal":
 
             # length along X
             # width along Y
-            x0 = start_x
-            x1 = start_x + length
+            x0 = machine_x
+            x1 = machine_x + length
 
-            y0 = start_y
-            y1 = start_y + width
+            y0 = machine_y
+            y1 = machine_y + width
 
         elif axis == "vertical":
 
             # width along X
             # length along Y
-            x0 = start_x
-            x1 = start_x + width
+            x0 = machine_x
+            x1 = machine_x + width
 
-            y0 = start_y
-            y1 = start_y + length
+            y0 = machine_y
+            y1 = machine_y + length
 
         else:
             raise RuntimeError(f"Invalid axis: {axis}")
