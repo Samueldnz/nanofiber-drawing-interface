@@ -1147,11 +1147,11 @@ class MachineController(QObject):
                 # RETRACT FILAMENT
                 # -------------------------------------------------
 
-                if not self._is_retracted:
-                    self.send_gcode(
-                        "G10"
-                    )
-                    self._is_retracted = True
+                # if not self._is_retracted:
+                #     self.send_gcode(
+                #         "G10"
+                #     )
+                #     self._is_retracted = True
 
                 # -------------------------------------------------
                 # SAFE PARK
@@ -1254,11 +1254,11 @@ class MachineController(QObject):
                     # -------------------------------------------------
                     # RETRACT FILAMENT
                     # -------------------------------------------------
-                    if not self._is_retracted:
-                        self.ser.write(
-                            b"G10\n"
-                        )
-                        self._is_retracted = True
+                    # if not self._is_retracted:
+                    #     self.ser.write(
+                    #         b"G10\n"
+                    #     )
+                    #     self._is_retracted = True
 
                     # -------------------------------------------------
                     # KEEP COOLING FAN ACTIVE
@@ -1853,25 +1853,25 @@ class MachineController(QObject):
         send(f"G0 Z{zoff:.3f} F{speed}")
 
         # unretract if needed
-        if self._is_retracted:
-            send("G11")
-            send("G1 E0.1 F300")
-            self._is_retracted = False
+        # if self._is_retracted:
+        #     send("G11")
+        #     send("G1 E0.1 F300")
+        #     self._is_retracted = False
 
         # extrusion move
         send(
             f"G1 X{xe:.3f} "
             f"Y{ye:.3f} "
-            f"E{E:.3f} "
+            # f"E{E:.3f} "
             f"F{speed}"
         )
 
-        if not self._is_retracted:
-            send("G10")
-            self._is_retracted = True
+        # if not self._is_retracted:
+        #     send("G10")
+        #     self._is_retracted = True
 
         send("M400")
-        send("G92 E0") # reset the extrusor
+        # send("G92 E0") # reset the extrusor
 
 
 
@@ -1968,22 +1968,22 @@ class MachineController(QObject):
 
             if self._pause_requested.is_set():
 
-                try:
+                # try:
 
-                    # ---------------------------------------------
-                    # RETRACT FILAMENT
-                    # ---------------------------------------------
-                    if not self._is_retracted:
-                        self.send_gcode(
-                            "G10"
-                        )
-                        self._is_retracted = True
+                #     # ---------------------------------------------
+                #     # RETRACT FILAMENT
+                #     # ---------------------------------------------
+                #     if not self._is_retracted:
+                #         self.send_gcode(
+                #             "G10"
+                #         )
+                #         self._is_retracted = True
 
-                except Exception as e:
+                # except Exception as e:
 
-                    self.log(
-                        f"Pause retract failed: {e}"
-                    )
+                #     self.log(
+                #         f"Pause retract failed: {e}"
+                #     )
 
                 self._pause_event.clear()
 
@@ -2017,22 +2017,22 @@ class MachineController(QObject):
 
                     time.sleep(0.05)
 
-                try:
+                # try:
 
-                    # ---------------------------------------------
-                    # UNRETRACT FILAMENT
-                    # ---------------------------------------------
-                    if self._is_retracted:
-                        self.send_gcode(
-                            "G11"
-                        )
-                        self._is_retracted = False
+                #     # ---------------------------------------------
+                #     # UNRETRACT FILAMENT
+                #     # ---------------------------------------------
+                #     if self._is_retracted:
+                #         self.send_gcode(
+                #             "G11"
+                #         )
+                #         self._is_retracted = False
 
-                except Exception as e:
+                # except Exception as e:
 
-                    self.log(
-                        f"Resume unretract failed: {e}"
-                    )
+                #     self.log(
+                #         f"Resume unretract failed: {e}"
+                #     )
 
                 self._pause_requested.clear()
 
@@ -2071,20 +2071,20 @@ class MachineController(QObject):
         send("M220 S100")
         send("M221 S100")
 
-        send("M207 S1.0 F1500")
-        send("M208 F1500")
+        # send("M207 S1.0 F1500")
+        # send("M208 F1500")
 
         send("G90")
-        send("M83")
+        # send("M83")
 
         send("G0 Z2 F1500")
 
-        send("G92 E0")
+        # send("G92 E0")
 
-        self._send_and_wait_ok(
-            f"M109 S{float(self.state.params.target_temperature)}",
-            timeout_s=300.0
-        )
+        # self._send_and_wait_ok(
+        #     f"M109 S{float(self.state.params.target_temperature)}",
+        #     timeout_s=300.0
+        # )
 
         # ---------------- active patterns ----------------
 
