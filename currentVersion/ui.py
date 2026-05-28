@@ -716,10 +716,13 @@ class ConnectionPage(QWidget):
         action_row = QHBoxLayout()
         self.btn_start = QPushButton("Do Science!")
         self.btn_pause = QPushButton("Pause")
+        self.btn_emergency = QPushButton("Emergency Stop")
         self.btn_pause.setEnabled(False)
+        self.btn_emergency.setEnabled(False)
 
         action_row.addWidget(self.btn_start)
         action_row.addWidget(self.btn_pause)
+        action_row.addWidget(self.btn_emergency)
         outer.addStretch(1)
         outer.addLayout(action_row)
 
@@ -734,6 +737,7 @@ class ConnectionPage(QWidget):
         self.btn_disconnect.clicked.connect(self._disconnect)
         self.btn_start.clicked.connect(self._start)
         self.btn_pause.clicked.connect(self.controller.toggle_pause)
+        self.btn_emergency.clicked.connect(self.controller.emergency_stop)
 
         self.controller.drawing_running_changed.connect(self._on_drawing_running)
         self.controller.drawing_paused_changed.connect(self._on_drawing_paused)

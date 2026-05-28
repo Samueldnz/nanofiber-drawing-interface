@@ -943,3 +943,31 @@ class MachineController(QObject):
         self.log("Test Z-Offset")
         send = self._send_checked
         send(f"G1 Z{self.state.params.z_offset:.3f} F1000")
+
+    def emergency_stop(self) -> None:
+
+        self.log("EMERGENCY STOP")
+
+        self._stop_event.set()
+        self._pause_event.set()
+
+        if self.ser is None:
+            return
+
+        try:
+            # immediate planner stop
+            self._send_and_wait_ok("M410")
+
+            # lift nozzle safely
+            self._send_and_wait_ok("G91")
+            self._send_and_wait_ok("G1 Z10 F1500")
+            self._send_and_wait_ok("G90")
+
+            # stop extrusion mode ambiguity
+            self._send_and_wait_ok("M82")
+            self._send_and_wait_ok("G92 E0")
+
+            self.log("Machine stopped safely")
+
+        except Exception as e:
+            self.log(f"Emergency stop error: {e}")
