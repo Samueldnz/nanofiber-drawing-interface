@@ -564,15 +564,39 @@ class MachineController(QObject):
         self._send_and_wait_ok(cmd)
 
     def check_syringe(self) -> Optional[str]:
-            self.ser.write(("M119\r\n").encode("utf-8"))
-            t0 = time.time()
-            while time.time() - t0 < 2.0:
-                line = self.ser.readline()
-                if line == b"filament: open\n":
-                    return "empty"
-                if line == b"filament: TRIGGERED\n":
-                    return "full"
+
+        if self.ser is None:
             return None
+
+        self.ser.reset_input_buffer()
+
+        self.ser.write(b"M119\n")
+
+        deadline = time.time() + 2.0
+
+        result = None
+
+        while time.time() < deadline:
+
+            raw = self.ser.readline()
+
+            if not raw:
+                continue
+
+            line = raw.decode(errors="ignore").strip().lower()
+
+            print(line)
+
+            if "filament: open" in line:
+                result = "empty"
+
+            elif "filament: triggered" in line:
+                result = "full"
+
+            elif line == "ok":
+                break
+
+        return result
 
     def _run_custom_centered(self, status_signal: Signal) -> None:
         """
@@ -639,9 +663,11 @@ class MachineController(QObject):
             # deposition before motion continues.
             # -------------------------------------------------
             send("G91") # Use relative positioning
+            send("M83")
             send(f"G1 E-{float(pp.droplet_amount)} F200") #move extruder by drolet amount in feedrate 200, negative way
             send("G4 P1000") # Wait 1000 ms for stabilization
             send("G90")  # Restore absolute positioning
+            send("M82")
 
             # -------------------------------------------------
             # UPDATE SOFTWARE BOOKKEEPING
@@ -694,9 +720,11 @@ class MachineController(QObject):
             # delay is used compared to the initial droplet.
             # -------------------------------------------------
             send("G91") 
+            send("M83")
             send(f"G1 E-{float(pp.droplet_amount)} F200")
             send("G4 P500")  
             send("G90")
+            send("M82")
             send(f"G1 F{int(pp.speed)}") 
 
             # -------------------------------------------------
@@ -853,7 +881,10 @@ class MachineController(QObject):
             self.log(f"Syringe: invalid mark {ml_mark}")
             return
         epos = float(self._ML_TO_EPOS[ml_mark])
-        self.ser.write((f"M302 S0\nG1 E{int(epos)} F200\n").encode("utf-8"))
+        self._send_and_wait_ok("M302 S0")
+        self._send_and_wait_ok("G92 E0")
+        self._send_and_wait_ok("M82")
+        self._send_and_wait_ok(f"G1 E{int(epos)} F200")
         self.state.set_param("syringe_current_amount", epos)
         self.log(f"Go to {ml_mark} ml")
 
@@ -863,9 +894,14 @@ class MachineController(QObject):
             return
         p = self.state.params
         units = int(p.syringe_droplet_units)
-        self.ser.write(("G91\n").encode("utf-8"))
-        self.ser.write((f"M302 S0\nG1 E{units} F200 ;intake {units} units\n").encode("utf-8"))
-        self.ser.write(("G90\n").encode("utf-8"))
+        self._send_and_wait_ok("M83")
+        self._send_and_wait_ok("G91")
+        
+        self._send_and_wait_ok("M302 S0")
+        self._send_and_wait_ok(f"G1 E{units} F200 ;intake {units} units")
+        
+        self._send_and_wait_ok("M82")
+        self._send_and_wait_ok("G90")
         self.state.set_param("syringe_current_amount", float(p.syringe_current_amount + units))
         self.log(f"Intake {units} units")
 
@@ -879,9 +915,11 @@ class MachineController(QObject):
             self._send_and_wait_ok("M302")
 
             status = self.check_syringe()
-            self._send_and_wait_ok("G91 E0")
+            self._send_and_wait_ok("G91")
+            self._send_and_wait_ok("G92 E0")
 
             loops = 0
+            self._send_and_wait_ok("M83")
             while status == "full" and loops < 400:
                 self._send_and_wait_ok("G1 E-0.5 F300")
                 status = self.check_syringe()
@@ -892,6 +930,7 @@ class MachineController(QObject):
 
             self._send_and_wait_ok("G92 E0")
             self._send_and_wait_ok("G90")
+            self._send_and_wait_ok("M82")
             self.log("Syringe homed")
         except Exception as e:
             self.log(f"Syringe home error: {e}")
