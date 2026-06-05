@@ -249,6 +249,7 @@ class MachineController(QObject):
 
         self._is_retracted = False
         self._emergency_stopped = False
+        self._cooling_fan_enabled = False
 
         # drawing infra
         self._drawing_thread: Optional[QThread] = None
@@ -321,6 +322,49 @@ class MachineController(QObject):
             "Temperature auto-report disabled"
         )
 
+    def update_cooling_fan(
+        self,
+        current_temp: float
+    ):
+
+        self.apply_fan_state_from_temperature()
+
+    def apply_fan_state_from_temperature(self):
+
+        current_temp = float(
+            self.state.params.current_temperature
+        )
+
+        if (
+            current_temp > 80
+            and not self._cooling_fan_enabled
+        ):
+
+            self.send_gcode(
+                "M106 S255"
+            )
+
+            self._cooling_fan_enabled = True
+
+            self.log(
+                f"Cooling fan enabled ({current_temp:.1f} °C)"
+            )
+
+        elif (
+            current_temp <= 80
+            and self._cooling_fan_enabled
+        ):
+
+            self.send_gcode(
+                "M106 S0"
+            )
+
+            self._cooling_fan_enabled = False
+
+            self.log(
+                f"Cooling fan disabled ({current_temp:.1f} °C)"
+            )
+
     # =========================================================
     # SET TEMPERATURE
     # =========================================================
@@ -340,8 +384,8 @@ class MachineController(QObject):
             )
 
         target = max(
-            0.0,
-            min(50.0, float(target))
+            25.0,
+            min(300.0, float(target))
         )
 
         self.send_gcode(
@@ -388,28 +432,14 @@ class MachineController(QObject):
             current_temp
         )
 
+        self.update_cooling_fan(
+            current_temp
+        )
+
         target = float(
             self.state.params.target_temperature
         )
 
-        target_match = re.search(
-            r"T\d*:\s*[0-9]+(?:\.[0-9]+)?\s*/\s*([0-9]+(?:\.[0-9]+)?)",
-            line
-        )
-
-        if target_match:
-            try:
-
-                target = float(
-                    target_match.group(1)
-                )
-
-                self.state.set_target_temperature(
-                    target
-                )
-
-            except Exception:
-                pass
 
         if target <= 0:
             status = "IDLE"
@@ -842,8 +872,22 @@ class MachineController(QObject):
 
             self.log("Homing done")
 
+            self.send_gcode(
+                "M106 S0"
+            )
+
+            self._cooling_fan_enabled = False
+
             # enable live temperature telemetry
             self.enable_temperature_reporting(2)
+
+            self.log(
+                "Cooling fan forced OFF at startup"
+            )
+
+            self.set_temperature(
+                self.state.params.target_temperature
+            )
 
             return True
         
@@ -1174,12 +1218,10 @@ class MachineController(QObject):
                 )
 
                 # -------------------------------------------------
-                # KEEP COOLING FAN ACTIVE
+                # APPLY FAN POLICY
                 # -------------------------------------------------
 
-                self.send_gcode(
-                    "M106 S255"
-                )
+                self.apply_fan_state_from_temperature()
 
             self.log(
                 "Drawing stopped safely"
@@ -1229,19 +1271,9 @@ class MachineController(QObject):
 
             if self.ser is not None:
 
-                with self._serial_lock:
+                self.apply_fan_state_from_temperature()
 
-                    # -------------------------------------------------
-                    # IMMEDIATE MOTION STOP
-                    # -------------------------------------------------
-
-                    self.ser.write(
-                        b"M410\n"
-                    )
-
-                    self.ser.flush()
-
-                    time.sleep(0.1)
+                with self._serial_lock:    
 
                     # -------------------------------------------------
                     # DISABLE HOTEND HEATER
@@ -1260,13 +1292,6 @@ class MachineController(QObject):
                         )
                         self._is_retracted = True
 
-                    # -------------------------------------------------
-                    # KEEP COOLING FAN ACTIVE
-                    # -------------------------------------------------
-
-                    self.ser.write(
-                        b"M106 S255\n"
-                    )
 
                     self.ser.flush()
 
@@ -1418,9 +1443,7 @@ class MachineController(QObject):
             # KEEP COOLING FAN ACTIVE
             # =================================================
 
-            self._send_and_wait_ok(
-                "M106 S255"
-            )
+            self.apply_fan_state_from_temperature()
 
             # =================================================
             # RESTORE DEFAULT MOTION MODES
@@ -1480,9 +1503,7 @@ class MachineController(QObject):
             # RESET TEMPERATURE STATE
             # =================================================
 
-            self.state.set_target_temperature(
-                0.0
-            )
+            self.state.set_target_temperature(25.0)
 
             self.state.set_temperature_status(
                 "IDLE"

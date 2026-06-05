@@ -333,13 +333,13 @@ class ReactorThermometerWidget(QWidget):
 
         t = self.current_temp
 
-        if t < 10:
+        if t < 50:
             return QColor("#2563EB")
 
-        elif t < 25:
+        elif t < 120:
             return QColor("#00BFFF")
 
-        elif t < 35:
+        elif t < 220:
             return QColor("#FF9F1A")
 
         return QColor("#FF3B30")
@@ -360,7 +360,7 @@ class ReactorThermometerWidget(QWidget):
         # SAFE AREA
         # =====================================================
 
-        pad = 34
+        pad = 16
 
         outer = QRectF(
             pad,
@@ -482,7 +482,7 @@ class ReactorThermometerWidget(QWidget):
             0.0,
             min(
                 1.0,
-                self.current_temp / 50.0
+                self.current_temp / 300.0
             )
         )
 
@@ -534,14 +534,14 @@ class ReactorThermometerWidget(QWidget):
         )
 
         font = QFont("Inter")
-        font.setPointSize(12)
+        font.setPointSize(10)
 
         painter.setFont(font)
 
-        for i in range(0, 51, 10):
+        for i in range(0, 301, 25):
 
             y = chamber.bottom() - (
-                chamber.height() * (i / 50.0)
+                chamber.height() * (i / 300.0)
             )
 
             painter.drawLine(
@@ -3093,8 +3093,8 @@ class TemperaturePage(QWidget):
         self.target_input = QDoubleSpinBox()
 
         self.target_input.setRange(
-            0,
-            50
+            25,
+            300
         )
 
         self.target_input.setDecimals(2)
@@ -3657,14 +3657,6 @@ class TemperaturePage(QWidget):
         self.target_temp.setText(
             f"{p.target_temperature:.1f} °C"
         )
-
-        self.target_input.blockSignals(True)
-
-        self.target_input.setValue(
-            float(p.target_temperature)
-        )
-
-        self.target_input.blockSignals(False)
 
         status = str(
             p.temperature_status
