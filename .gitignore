@@ -215,3 +215,8 @@ log.md
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Generated outputs
+article/output/
+article/data/
+article/ideia.md
