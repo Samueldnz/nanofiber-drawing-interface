@@ -2079,7 +2079,135 @@ class MachineController(QObject):
 
             i += 1
 
-    
+    def _prime_extruder(self) -> None:
+
+        send = self._send_checked
+        p = self.state.params
+
+        # =====================================================
+        # PURGE POSITION (SAFE AREA BORDER)
+        # =====================================================
+
+        purge_x = float(p.safe_x_min) + 2.0
+        purge_y = float(p.safe_y_min) + 2.0
+
+        purge_line_length = 15.0
+
+        # =====================================================
+        # ENSURE EXTRUDER IS NOT RETRACTED
+        # =====================================================
+
+        if self._is_retracted:
+
+            send("G11")
+
+            self._is_retracted = False
+
+        # =====================================================
+        # DISCOVER FIRST FIBER START POSITION
+        # =====================================================
+
+        rectangles = self._get_active_rectangles()
+
+        axis, rect = rectangles[0]
+
+        x0, x1, y0, y1 = rect
+
+        if axis == "horizontal":
+
+            first_x = x0
+            first_y = y0
+
+        elif axis == "vertical":
+
+            first_x = x0
+            first_y = y0
+
+        else:
+
+            raise RuntimeError(
+                f"Invalid axis: {axis}"
+            )
+
+        # =====================================================
+        # RESET EXTRUDER
+        # =====================================================
+
+        send("G92 E0")
+
+        # =====================================================
+        # MOVE TO PURGE LOCATION
+        # =====================================================
+
+        send(
+            f"G0 X{purge_x:.3f} "
+            f"Y{purge_y:.3f} "
+            f"F3000"
+        )
+
+        send(
+            f"G0 Z{p.z_offset:.3f} "
+            f"F1500"
+        )
+
+        # =====================================================
+        # STATIONARY PRIME (~2 SECONDS)
+        # =====================================================
+
+        send(
+            "G1 E2.0 F60"
+        )
+
+        # =====================================================
+        # PURGE LINE
+        # =====================================================
+
+        purge_end_x = purge_x + purge_line_length
+
+        e_line = self._filament_length_to_extrude(
+            purge_x,
+            purge_y,
+            purge_end_x,
+            purge_y
+        )
+
+        send(
+            f"G1 X{purge_end_x:.3f} "
+            f"Y{purge_y:.3f} "
+            f"E{e_line:.3f} "
+            f"F300"
+        )
+
+        # =====================================================
+        # RETRACT
+        # =====================================================
+
+        send("G10")
+
+        self._is_retracted = True
+
+        send("G92 E0")
+
+        # =====================================================
+        # LIFT NOZZLE
+        # =====================================================
+
+        send(
+            f"G0 Z{p.z_offset + 2.0:.3f} "
+            f"F1500"
+        )
+
+        # =====================================================
+        # GO TO FIRST FIBER
+        # =====================================================
+
+        send(
+            f"G0 X{first_x:.3f} "
+            f"Y{first_y:.3f} "
+            f"F3000"
+        )
+
+        send("M400")
 
 
     def _run_custom_centered(
@@ -2108,6 +2236,11 @@ class MachineController(QObject):
             f"M109 S{float(self.state.params.target_temperature)}",
             timeout_s=300.0
         )
+
+        # ---------------- purge line ----------------
+
+        self._prime_extruder()
+
 
         # ---------------- active patterns ----------------
 
