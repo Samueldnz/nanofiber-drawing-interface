@@ -221,7 +221,7 @@ def plot_speed_vs_mean_sem(
     # =====================================
 
     plt.xlabel(
-        "Printing Speed (mm/s)",
+        "Drawing Speed (mm/s)",
         fontsize=12
     )
 
@@ -231,7 +231,7 @@ def plot_speed_vs_mean_sem(
     )
 
     plt.title(
-        "Effect of Printing Speed on Fiber Diameter",
+        "Effect of Drawing Speed on Fiber Diameter",
         fontsize=14,
         fontweight="bold"
     )
