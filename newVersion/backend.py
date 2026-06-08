@@ -9,7 +9,6 @@ from PySide6.QtCore import QObject, Signal, QThread, Slot
 import json
 import time
 import threading
-import math
 import re
 import queue
 from datetime import datetime
@@ -40,7 +39,7 @@ class Params:
     z_hop: float = 10.0              # mm
     pause_ms: int = 0                # ms (G4 P...)
     z_offset: float = 0.4            # mm
-
+    droplet_amount: float = 1
     clean: bool = True
 
     # --- CustomCentered safe bounds (seu retângulo seguro) ---
@@ -1144,16 +1143,6 @@ class MachineController(QObject):
             if self.ser is not None:
 
                 # -------------------------------------------------
-                # RETRACT FILAMENT
-                # -------------------------------------------------
-
-                if not self._is_retracted:
-                    self.send_gcode(
-                        "G10"
-                    )
-                    self._is_retracted = True
-
-                # -------------------------------------------------
                 # SAFE PARK
                 # -------------------------------------------------
 
@@ -1244,15 +1233,6 @@ class MachineController(QObject):
                     self.ser.write(
                         b"M140 S0\n"
                     )
-                    # -------------------------------------------------
-                    # RETRACT FILAMENT
-                    # -------------------------------------------------
-                    if not self._is_retracted:
-                        self.ser.write(
-                            b"G10\n"
-                        )
-                        self._is_retracted = True
-
 
                     self.ser.flush()
 
@@ -1690,35 +1670,6 @@ class MachineController(QObject):
         self._wait_pause_or_stop()
         self._send_and_wait_ok(cmd, timeout_s) 
 
-    def _line_length(self, x0, y0, x1, y1):
-        return math.sqrt(pow((x1 - x0), 2) + pow((y1 - y0), 2))
-    
-    def _deposited_volume(self, d):
-        # d = distance calculed with line_length
-        # w = layer`s width default 0.45
-        # h = layer`s height default 0.2
-        # V = deposited volume
-
-        factor = self.state.params.extrusion_multiplier
-
-        V = d * 0.45 * 0.2 * factor
-        return V
-    
-    def _filament_area(self):
-        # considering diameter = 1.75mm
-        r = 1.75 / 2 # 0.875mm
-        A_f = math.pi * pow(r, 2)
-        return A_f
-    
-    def _filament_length_to_extrude(self, x0, y0, x1, y1):
-        d = self._line_length(x0, y0, x1, y1)
-
-        V = self._deposited_volume(d)
-        A_f = self._filament_area()
-
-        E = V / A_f
-        return E
-
     def _horizontal_fiber(
         self,
         i: int,
@@ -1794,9 +1745,9 @@ class MachineController(QObject):
                 x_a = self._clamp(xe - 5.0, x_min, x_max)
                 x_b = self._clamp(xe - 10.0, x_min, x_max)
 
-            send(f"G0 X{x_a:.3f} Z0 F{speed}")
-            send(f"G0 X{x_b:.3f} F{speed}")
-            send(f"G0 Z3 F{speed}")
+            send(f"G1 X{x_a:.3f} Z0 F{speed}")
+            send(f"G1 X{x_b:.3f} F{speed}")
+            send(f"G1 Z3 F{speed}")
 
         elif axis == "vertical":
 
@@ -1807,9 +1758,20 @@ class MachineController(QObject):
                 y_a = self._clamp(ye - 5.0, y_min, y_max)
                 y_b = self._clamp(ye - 10.0, y_min, y_max)
 
-            send(f"G0 Y{y_a:.3f} Z0 F{speed}")
-            send(f"G0 Y{y_b:.3f} F{speed}")
-            send(f"G0 Z3 F{speed}")
+            send(f"G1 Y{y_a:.3f} Z0 F{speed}")
+            send(f"G1 Y{y_b:.3f} F{speed}")
+            send(f"G1 Z3 F{speed}")
+
+    def extrusion(self) -> None:
+        droplet_amount = float(self.state.params.droplet_amount)
+
+        send = self._send_checked
+
+        send("G91")
+        send("M83")
+        send(f"G1 E{droplet_amount:.3f} F200")
+        send("G4 P1000")
+        send("G90")
 
 
     def _execute_fiber(
@@ -1820,41 +1782,29 @@ class MachineController(QObject):
         ye: float,
         speed: int,
         zoff: float,
+        zhop: float,
     ) -> None:
 
         send = self._send_checked
-
-        E = self._filament_length_to_extrude(
-            xs,
-            ys,
-            xe,
-            ye,
-        )
 
         # move to start
         send(f"G0 X{xs:.3f} Y{ys:.3f} F{speed}")
 
         # go to print height
-        send(f"G0 Z{zoff:.3f} F{speed}")
+        send(f"G1 Z{zoff:.3f} F{speed}")
 
-        # unretract if needed
-        if self._is_retracted:
-            send("G11")
-            send("G1 E0.1 F300")
-            self._is_retracted = False
+        self.extrusion()
 
-        # extrusion move
-        send(
-            f"G1 X{xe:.3f} "
-            f"Y{ye:.3f} "
-            f"E{E:.3f} "
-            f"F{speed}",
-            timeout_s=600
-        )
+        send(f"G1 Z{zhop:.3f} F{speed}")
 
-        if not self._is_retracted:
-            send("G10")
-            self._is_retracted = True
+        send(f"G1 X{xe:.3f} Y{ye:.3f} F{speed}", timeout_s=600)
+
+        # go to print height
+        send(f"G1 Z{zoff:.3f} F{speed}")
+
+        self.extrusion()
+
+        send(f"G1 Z{zhop:.3f} F{speed}")
 
         send("M400")
         send("G92 E0") # reset the extrusor
@@ -1884,6 +1834,7 @@ class MachineController(QObject):
 
             speed = int(pp.speed)
             zoff = float(pp.z_offset)
+            zhop = float(pp.z_hop)
             clean = bool(pp.clean)
 
             # ---------------- generate fiber ----------------
@@ -1928,6 +1879,7 @@ class MachineController(QObject):
                 ye=ye,
                 speed=speed,
                 zoff=zoff,
+                zhop=zhop,
             )
 
             # ---------------- cleaning ----------------
@@ -1953,23 +1905,6 @@ class MachineController(QObject):
             # =====================================================
 
             if self._pause_requested.is_set():
-
-                try:
-
-                    # ---------------------------------------------
-                    # RETRACT FILAMENT
-                    # ---------------------------------------------
-                    if not self._is_retracted:
-                        self.send_gcode(
-                            "G10"
-                        )
-                        self._is_retracted = True
-
-                except Exception as e:
-
-                    self.log(
-                        f"Pause retract failed: {e}"
-                    )
 
                 self._pause_event.clear()
 
@@ -2002,23 +1937,6 @@ class MachineController(QObject):
                         return
 
                     time.sleep(0.05)
-
-                try:
-
-                    # ---------------------------------------------
-                    # UNRETRACT FILAMENT
-                    # ---------------------------------------------
-                    if self._is_retracted:
-                        self.send_gcode(
-                            "G11"
-                        )
-                        self._is_retracted = False
-
-                except Exception as e:
-
-                    self.log(
-                        f"Resume unretract failed: {e}"
-                    )
 
                 self._pause_requested.clear()
 
@@ -2056,17 +1974,6 @@ class MachineController(QObject):
         purge_x = float(p.safe_x_min) + 2.0
         purge_y = float(p.safe_y_min) + 2.0
 
-        purge_line_length = 15.0
-
-        # =====================================================
-        # ENSURE EXTRUDER IS NOT RETRACTED
-        # =====================================================
-
-        if self._is_retracted:
-
-            send("G11")
-
-            self._is_retracted = False
 
         # =====================================================
         # DISCOVER FIRST FIBER START POSITION
@@ -2111,68 +2018,38 @@ class MachineController(QObject):
         )
 
         send(
-            f"G0 Z{p.z_offset:.3f} "
-            f"F1500"
+            f"G1 Z{p.z_offset:.3f} "
+            f"F{p.speed}"
         )
 
-        # =====================================================
-        # STATIONARY PRIME (~2 SECONDS)
-        # =====================================================
+        for _ in range(3):
+            self.extrusion()
 
-        send(
-            "G1 E1 F60"
-        )
+
+        send(f"G1 Z{p.z_hop:.3f} F{p.speed}")
 
         # =====================================================
         # PURGE LINE
         # =====================================================
 
-        purge_end_x = purge_x + purge_line_length
+        # purge_end_x = purge_x + purge_line_length
 
-        e_line = self._filament_length_to_extrude(
-            purge_x,
-            purge_y,
-            purge_end_x,
-            purge_y
-        )
+        # e_line = self._filament_length_to_extrude(
+        #     purge_x,
+        #     purge_y,
+        #     purge_end_x,
+        #     purge_y
+        # )
 
-        send(
-            f"G1 X{purge_end_x:.3f} "
-            f"Y{purge_y:.3f} "
-            f"E{e_line:.3f} "
-            f"F600"
-        )
-
-        # =====================================================
-        # RETRACT
-        # =====================================================
-
-        send("G10")
-
-        self._is_retracted = True
-
-        send("G92 E0")
-
-        # =====================================================
-        # LIFT NOZZLE
-        # =====================================================
-
-        send(
-            f"G0 Z{p.z_offset + 2.0:.3f} "
-            f"F1500"
-        )
-
-        # =====================================================
-        # GO TO FIRST FIBER
-        # =====================================================
-
-        send(
-            f"G0 X{first_x:.3f} "
-            f"Y{first_y:.3f} "
-            f"F3000"
-        )
+        # send(
+        #     f"G1 X{purge_end_x:.3f} "
+        #     f"Y{purge_y:.3f} "
+        #     f"E{e_line:.3f} "
+        #     f"F600"
+        # )
 
         send("M400")
+        send("G92 E0")
 
 
     def _run_custom_centered(
@@ -2186,9 +2063,6 @@ class MachineController(QObject):
 
         send("M220 S100")
         send("M221 S100")
-
-        send("M207 S1.0 F1500")
-        send("M208 F1500")
 
         send("G90")
         send("M83")
