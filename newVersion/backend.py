@@ -37,7 +37,7 @@ class Params:
     # --- Motion / deposition ---
     speed: int = 1500                # mm/min
     z_hop: float = 10.0              # mm
-    pause_ms: int = 0                # ms (G4 P...)
+    pause_ms: int = 1000             # ms (G4 P...)
     z_offset: float = 0.4            # mm
     droplet_amount: float = 1
     clean: bool = True
@@ -62,9 +62,6 @@ class Params:
     target_temperature: float = 25.0
     temperature_status: str = "IDLE"
     temperature_reporting_enabled: bool = False
-
-
-    extrusion_multiplier: float = 0.50
 
 class SyringeEmptyError(Exception):
     pass
@@ -92,6 +89,7 @@ class AppState(QObject):
             "Z-Hop": float(p.z_hop),
             "Pause (ms)": int(p.pause_ms),
             "Z-Offset": float(p.z_offset),
+            "Droplet Amount": float(p.droplet_amount),
 
             "Clean": bool(p.clean),
 
@@ -136,6 +134,7 @@ class AppState(QObject):
         p.z_hop = float(data.get("Z-Hop", p.z_hop))
         p.pause_ms = int(data.get("Pause (ms)", p.pause_ms))
         p.z_offset = float(data.get("Z-Offset", p.z_offset))
+        p.droplet_amount = float(data.get("Droplet Amount", p.droplet_amount))
 
         p.safe_x_min = float(data.get("Safe X Min", p.safe_x_min))
         p.safe_x_max = float(data.get("Safe X Max", p.safe_x_max))
@@ -495,6 +494,9 @@ class MachineController(QObject):
 
                 "Pause":
                     f"{p.pause_ms} ms",
+
+                "Droplet Amount":
+                    f"{p.droplet_amount} mm",
 
                 "Clean":
                     "on" if p.clean else "off",
@@ -1764,13 +1766,14 @@ class MachineController(QObject):
 
     def extrusion(self) -> None:
         droplet_amount = float(self.state.params.droplet_amount)
+        pause_ms = float(self.state.params.pause_ms)
 
         send = self._send_checked
 
         send("G91")
         send("M83")
         send(f"G1 E{droplet_amount:.3f} F200")
-        send("G4 P1000")
+        send(f"G4 P{pause_ms}")
         send("G90")
 
 
