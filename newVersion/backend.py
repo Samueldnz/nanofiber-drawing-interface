@@ -64,6 +64,9 @@ class Params:
     temperature_status: str = "IDLE"
     temperature_reporting_enabled: bool = False
 
+
+    extrusion_multiplier: float = 0.50
+
 class SyringeEmptyError(Exception):
     pass
 
@@ -249,7 +252,6 @@ class MachineController(QObject):
 
         self._is_retracted = False
         self._emergency_stopped = False
-        self._cooling_fan_enabled = False
 
         # drawing infra
         self._drawing_thread: Optional[QThread] = None
@@ -322,48 +324,6 @@ class MachineController(QObject):
             "Temperature auto-report disabled"
         )
 
-    def update_cooling_fan(
-        self,
-        current_temp: float
-    ):
-
-        self.apply_fan_state_from_temperature()
-
-    def apply_fan_state_from_temperature(self):
-
-        current_temp = float(
-            self.state.params.current_temperature
-        )
-
-        if (
-            current_temp > 80
-            and not self._cooling_fan_enabled
-        ):
-
-            self.send_gcode(
-                "M106 S255"
-            )
-
-            self._cooling_fan_enabled = True
-
-            self.log(
-                f"Cooling fan enabled ({current_temp:.1f} °C)"
-            )
-
-        elif (
-            current_temp <= 80
-            and self._cooling_fan_enabled
-        ):
-
-            self.send_gcode(
-                "M106 S0"
-            )
-
-            self._cooling_fan_enabled = False
-
-            self.log(
-                f"Cooling fan disabled ({current_temp:.1f} °C)"
-            )
 
     # =========================================================
     # SET TEMPERATURE
@@ -429,10 +389,6 @@ class MachineController(QObject):
             return
 
         self.state.set_current_temperature(
-            current_temp
-        )
-
-        self.update_cooling_fan(
             current_temp
         )
 
@@ -872,18 +828,19 @@ class MachineController(QObject):
 
             self.log("Homing done")
 
-            self.send_gcode(
-                "M106 S0"
+            self._send_and_wait_ok("M302 P1")
+
+            self.log(
+                "Cold extrusion protection disabled (PCL mode)"
             )
 
-            self._cooling_fan_enabled = False
+            self.send_gcode("M140 S0")
+
+            self.state.set_target_temperature(25.0)
 
             # enable live temperature telemetry
             self.enable_temperature_reporting(2)
 
-            self.log(
-                "Cooling fan forced OFF at startup"
-            )
 
             self.set_temperature(
                 self.state.params.target_temperature
@@ -1133,7 +1090,6 @@ class MachineController(QObject):
         - retracts filament
         - parks toolhead safely
         - disables heater
-        - keeps cooling fan active
         """
 
         if self._drawing_thread is None:
@@ -1213,15 +1169,17 @@ class MachineController(QObject):
                 # DISABLE HEATER
                 # -------------------------------------------------
 
+                self.state.set_target_temperature(
+                    25.0
+                )
+                
                 self.send_gcode(
                     "M104 S0"
                 )
 
-                # -------------------------------------------------
-                # APPLY FAN POLICY
-                # -------------------------------------------------
-
-                self.apply_fan_state_from_temperature()
+                self.send_gcode(
+                    "M140 S0"
+                )
 
             self.log(
                 "Drawing stopped safely"
@@ -1240,7 +1198,6 @@ class MachineController(QObject):
         - Stops all buffered motion instantly
         - Stops current drawing workflow
         - Disables heater
-        - Keeps cooling fan active
         - Preserves firmware/serial connection
         """
         if self.ser is None:
@@ -1271,7 +1228,6 @@ class MachineController(QObject):
 
             if self.ser is not None:
 
-                self.apply_fan_state_from_temperature()
 
                 with self._serial_lock:    
 
@@ -1279,10 +1235,15 @@ class MachineController(QObject):
                     # DISABLE HOTEND HEATER
                     # -------------------------------------------------
 
+                    self.state.set_target_temperature(25.0)
+
                     self.ser.write(
                         b"M104 S0\n"
                     )
 
+                    self.ser.write(
+                        b"M140 S0\n"
+                    )
                     # -------------------------------------------------
                     # RETRACT FILAMENT
                     # -------------------------------------------------
@@ -1435,15 +1396,15 @@ class MachineController(QObject):
                 "Disabling heater..."
             )
 
+            self.state.set_target_temperature(25.0)
+
             self._send_and_wait_ok(
                 "M104 S0"
             )
 
-            # =================================================
-            # KEEP COOLING FAN ACTIVE
-            # =================================================
-
-            self.apply_fan_state_from_temperature()
+            self._send_and_wait_ok(
+                "M140 S0"
+            )
 
             # =================================================
             # RESTORE DEFAULT MOTION MODES
@@ -1723,11 +1684,11 @@ class MachineController(QObject):
                 "Stopped"
             )
 
-    def _send_checked(self, cmd: str) -> None:
+    def _send_checked(self, cmd: str, timeout_s: float = 600) -> None:
         if self._stop_event.is_set():
             raise RuntimeError("Stopped")
         self._wait_pause_or_stop()
-        self._send_and_wait_ok(cmd)
+        self._send_and_wait_ok(cmd, timeout_s) 
 
     def _line_length(self, x0, y0, x1, y1):
         return math.sqrt(pow((x1 - x0), 2) + pow((y1 - y0), 2))
@@ -1737,7 +1698,10 @@ class MachineController(QObject):
         # w = layer`s width default 0.45
         # h = layer`s height default 0.2
         # V = deposited volume
-        V = d * 0.45 * 0.2
+
+        factor = self.state.params.extrusion_multiplier
+
+        V = d * 0.45 * 0.2 * factor
         return V
     
     def _filament_area(self):
@@ -1884,7 +1848,8 @@ class MachineController(QObject):
             f"G1 X{xe:.3f} "
             f"Y{ye:.3f} "
             f"E{E:.3f} "
-            f"F{speed}"
+            f"F{speed}",
+            timeout_s=600
         )
 
         if not self._is_retracted:
@@ -2155,7 +2120,7 @@ class MachineController(QObject):
         # =====================================================
 
         send(
-            "G1 E2.0 F60"
+            "G1 E1 F60"
         )
 
         # =====================================================
@@ -2175,7 +2140,7 @@ class MachineController(QObject):
             f"G1 X{purge_end_x:.3f} "
             f"Y{purge_y:.3f} "
             f"E{e_line:.3f} "
-            f"F300"
+            f"F600"
         )
 
         # =====================================================
