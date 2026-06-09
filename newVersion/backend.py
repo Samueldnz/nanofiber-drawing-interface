@@ -36,9 +36,10 @@ class Params:
 
     # --- Motion / deposition ---
     speed: int = 1500                # mm/min
-    z_hop: float = 10.0              # mm
+    extrusion_speed: int = 200
+    z_hop: float = 5.0              # mm
     pause_ms: int = 1000             # ms (G4 P...)
-    z_offset: float = 0.4            # mm
+    z_offset: float = 0.3            # mm
     droplet_amount: float = 0.2
     clean: bool = True
 
@@ -1767,12 +1768,13 @@ class MachineController(QObject):
     def extrusion(self) -> None:
         droplet_amount = float(self.state.params.droplet_amount)
         pause_ms = float(self.state.params.pause_ms)
+        extrusion_speed = float(self.state.params.extrusion_speed)
 
         send = self._send_checked
 
         send("G91")
         send("M83")
-        send(f"G1 E{droplet_amount:.3f} F200")
+        send(f"G1 E{droplet_amount:.3f} F{extrusion_speed}")
         send(f"G4 P{pause_ms}")
         send("G90")
 
