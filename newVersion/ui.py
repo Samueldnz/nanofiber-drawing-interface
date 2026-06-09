@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -40,226 +41,6 @@ TEXT_PRIMARY = "#F8FAFC"
 TEXT_SECONDARY = "#94A3B8"
 
 SUCCESS_GREEN = "#22C55E"
-
-def _primary_button(text: str) -> QPushButton:
-    """
-    Main action button.
-    Used for:
-    - Start
-    - Next
-    - Connect
-    """
-
-    btn = QPushButton(text)
-
-    font = QFont("Inter")
-    font.setPointSize(11)
-    font.setBold(True)
-
-    btn.setFont(font)
-    btn.setCursor(Qt.PointingHandCursor)
-    btn.setMinimumHeight(44)
-
-    btn.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {PRIMARY_BLUE};
-            color: white;
-            border: none;
-            border-radius: 10px;
-            padding: 10px 18px;
-        }}
-
-        QPushButton:hover {{
-            background-color: #3B82F6;
-        }}
-
-        QPushButton:pressed {{
-            background-color: #1D4ED8;
-        }}
-    """)
-
-    return btn
-
-def _secondary_button(text: str) -> QPushButton:
-    """
-    Secondary industrial button.
-    Used for:
-    - Load
-    - Export
-    - Info
-    """
-
-    btn = QPushButton(text)
-
-    font = QFont("Inter")
-    font.setPointSize(10)
-    font.setBold(True)
-
-    btn.setFont(font)
-    btn.setCursor(Qt.PointingHandCursor)
-    btn.setMinimumHeight(42)
-
-    btn.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {BG_SECONDARY};
-            color: {TEXT_PRIMARY};
-            border: 1px solid #334155;
-            border-radius: 10px;
-            padding: 10px 18px;
-        }}
-
-        QPushButton:hover {{
-            border: 1px solid {PRIMARY_BLUE};
-            background-color: #273549;
-        }}
-
-        QPushButton:pressed {{
-            background-color: #111827;
-        }}
-    """)
-
-    return btn
-
-def _danger_button(text: str) -> QPushButton:
-    """
-    Critical action button.
-    Used for:
-    - Emergency stop
-    - Disconnect
-    - Reset
-    """
-
-    btn = QPushButton(text)
-
-    font = QFont("Inter")
-    font.setPointSize(10)
-    font.setBold(True)
-
-    btn.setFont(font)
-    btn.setCursor(Qt.PointingHandCursor)
-    btn.setMinimumHeight(42)
-
-    btn.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {ENERGON_RED};
-            color: white;
-            border: none;
-            border-radius: 10px;
-            padding: 10px 18px;
-        }}
-
-        QPushButton:hover {{
-            background-color: #EF4444;
-        }}
-
-        QPushButton:pressed {{
-            background-color: #B91C1C;
-        }}
-    """)
-
-    return btn
-
-# =========================================================
-# TYPOGRAPHY HELPERS
-# =========================================================
-
-def _title_label(text: str) -> QLabel:
-    """
-    Main hero/page title.
-
-    Used for:
-    - application branding
-    - main page headers
-    - cinematic launcher titles
-    """
-
-    lbl = QLabel(text)
-
-    font = QFont("Orbitron")
-    font.setPointSize(24)
-    font.setBold(True)
-
-    lbl.setFont(font)
-
-    lbl.setWordWrap(True)
-
-    lbl.setStyleSheet(f"""
-        QLabel {{
-            color: {TEXT_PRIMARY};
-            background: transparent;
-            letter-spacing: 2px;
-            padding-bottom: 4px;
-            border: none;
-        }}
-    """)
-
-    return lbl
-
-
-def _section_label(text: str) -> QLabel:
-    """
-    Secondary hierarchy label.
-
-    Used for:
-    - section headers
-    - subtitles
-    - grouped parameter titles
-    """
-
-    lbl = QLabel(text)
-
-    font = QFont("Inter")
-    font.setPointSize(16)
-    font.setBold(True)
-
-    lbl.setFont(font)
-
-    lbl.setWordWrap(True)
-
-    lbl.setStyleSheet(f"""
-        QLabel {{
-            color: {CYBERTRON_CYAN};
-            background: transparent;
-            padding-bottom: 2px;
-            border: none;
-        }}
-    """)
-
-    return lbl
-
-
-def _subtle_label(text: str) -> QLabel:
-    """
-    Descriptive/support text.
-
-    Used for:
-    - helper descriptions
-    - subtitles
-    - contextual information
-    """
-
-    lbl = QLabel(text)
-
-    font = QFont("Inter")
-    font.setPointSize(10)
-    font.setBold(False)
-
-    lbl.setFont(font)
-
-    lbl.setWordWrap(True)
-
-    lbl.setStyleSheet(f"""
-        QLabel {{
-            color: {TEXT_SECONDARY};
-            background: transparent;
-            line-height: 1.5;
-            border: none;
-        }}
-    """)
-
-    return lbl
-
-
 
 INFO_TEXT = """
 <p>
@@ -2233,6 +2014,23 @@ class DrawSettingsPage(QWidget):
         )
 
         # =========================================================
+        # DROPLET AMOUNT
+        # =========================================================
+
+        self.droplet_amount = QDoubleSpinBox()
+
+        self.droplet_amount.setDecimals(2)
+        self.droplet_amount.setRange(0.0, 1000.0)
+        self.droplet_amount.setSingleStep(0.5)
+
+        self.droplet_amount.valueChanged.connect(
+            lambda v: self.state.set_param(
+                "droplet_amount",
+                float(v)
+            )
+        )
+
+        # =========================================================
         # Z-OFFSET
         # =========================================================
 
@@ -2326,32 +2124,11 @@ class DrawSettingsPage(QWidget):
             0
         )
 
-        ghost = QFrame()
-
-        ghost.setObjectName(
-            "ghostCard"
-        )
-
-        ghost_layout = QVBoxLayout(ghost)
-
-        ghost_layout.setContentsMargins(
-            18, 18, 18, 18
-        )
-
-        ghost_layout.addStretch()
-
-        ghost_spacer = QWidget()
-
-        ghost_spacer.setFixedHeight(52)
-
-        ghost_layout.addWidget(
-            ghost_spacer
-        )
-
-        ghost_layout.addStretch()
-
         grid.addWidget(
-            ghost,
+            self.create_param_widget(
+                "Droplet Amount (mm)",
+                self.droplet_amount
+            ),
             1,
             1
         )
@@ -2890,6 +2667,7 @@ class DrawSettingsPage(QWidget):
             (self.pause_ms, p.pause_ms),
             (self.zhop, p.z_hop),
             (self.zoffset, p.z_offset),
+            (self.droplet_amount, p.droplet_amount)
         ]
 
         for w, val in widgets:
@@ -3812,6 +3590,7 @@ class SummaryPage(QWidget):
             ("Z-Hop", "z_hop"),
             ("Z-Offset", "z_offset"),
             ("Clean", "clean"),
+            ("Droplet Amount", "droplet_amount")
         ]
 
         for label, key in draw_params:
@@ -4321,6 +4100,9 @@ class SummaryPage(QWidget):
 
             "z_offset":
                 f"{p.z_offset:.3f} mm",
+            
+            "droplet_amount":
+                f"{p.droplet_amount:.3f} mm",
 
             "clean":
                 "ON" if p.clean else "OFF",

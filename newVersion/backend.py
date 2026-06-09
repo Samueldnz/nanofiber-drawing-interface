@@ -39,7 +39,7 @@ class Params:
     z_hop: float = 10.0              # mm
     pause_ms: int = 1000             # ms (G4 P...)
     z_offset: float = 0.4            # mm
-    droplet_amount: float = 1
+    droplet_amount: float = 0.2
     clean: bool = True
 
     # --- CustomCentered safe bounds (seu retângulo seguro) ---
