@@ -1737,16 +1737,19 @@ class MachineController(QObject):
 
         send = self._send_checked
 
+        clean_step_1 = 5.0
+        clean_step_2 = 20.0
+
         x_min, x_max, y_min, y_max, _, _ = self._safe_center()
 
         if axis == "horizontal":
 
             if xe >= (x0 + x1) / 2.0:
-                x_a = self._clamp(xe + 5.0, x_min, x_max)
-                x_b = self._clamp(xe + 10.0, x_min, x_max)
+                x_a = self._clamp(xe + clean_step_1, x_min, x_max)
+                x_b = self._clamp(xe + clean_step_2, x_min, x_max)
             else:
-                x_a = self._clamp(xe - 5.0, x_min, x_max)
-                x_b = self._clamp(xe - 10.0, x_min, x_max)
+                x_a = self._clamp(xe - clean_step_1, x_min, x_max)
+                x_b = self._clamp(xe - clean_step_2, x_min, x_max)
 
             send(f"G1 X{x_a:.3f} Z0 F{speed}")
             send(f"G1 X{x_b:.3f} F{speed}")
@@ -1755,11 +1758,11 @@ class MachineController(QObject):
         elif axis == "vertical":
 
             if ye >= (y0 + y1) / 2.0:
-                y_a = self._clamp(ye + 5.0, y_min, y_max)
-                y_b = self._clamp(ye + 10.0, y_min, y_max)
+                y_a = self._clamp(ye + clean_step_1, y_min, y_max)
+                y_b = self._clamp(ye + clean_step_2, y_min, y_max)
             else:
-                y_a = self._clamp(ye - 5.0, y_min, y_max)
-                y_b = self._clamp(ye - 10.0, y_min, y_max)
+                y_a = self._clamp(ye - clean_step_1, y_min, y_max)
+                y_b = self._clamp(ye - clean_step_2, y_min, y_max)
 
             send(f"G1 Y{y_a:.3f} Z0 F{speed}")
             send(f"G1 Y{y_b:.3f} F{speed}")

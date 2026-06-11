@@ -889,7 +889,7 @@ class MainWindow(QMainWindow):
             f"Nanofiber Machine - {Path(path).name}"
         )
 
-        self.go("Draw")
+        self.go("Draw Settings")
 
     def save_project_dialog(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Save Project", "", "JSON files (*.json)")
