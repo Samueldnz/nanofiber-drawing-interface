@@ -6,6 +6,7 @@ from config import OUTPUT_DIR
 from config import (
     DATA_DIR,
     SAMPLES,
+    SAMPLES_ZOOM,
     DESCRIPTIVE_CSV
 )
 
@@ -22,8 +23,9 @@ from estatistica.anova import (
 )
 
 from plots.histogram import (
-    plot_individual_histograms,
-    plot_histogram_comparison
+    plot_histogram_comparison_scale_100um,
+    plot_individual_histograms_scale_100um,
+    plot_individual_histograms_scale_30um
 )
 
 from plots.boxplot import (
@@ -86,6 +88,31 @@ def clear_output_directory():
         f"\n{deleted_files} file(s) removed from output."
     )
 
+def print_menu_histogram_scale():
+    print("\n" + "=" * 50)
+    print("CHOOSE THE RANGE")
+    print("=" * 50)
+
+    print("1 - 30 um")
+    print("2 - 100 um")
+    print("0 - Back to the Main Menu")
+
+    print("=" * 50)
+
+def get_histogram_scale():
+
+    while True:
+
+        print_menu_histogram_scale()
+
+        scale_choice = input(
+            "\nSelect a scale: "
+        ).strip()
+
+        if scale_choice in ["0", "1", "2"]:
+            return scale_choice
+
+        print("\nInvalid option.")
 
 def print_menu():
 
@@ -149,14 +176,19 @@ def run_everything(
     # Histograms
     # ---------------------------------
 
-    plot_individual_histograms(
+    plot_individual_histograms_scale_100um(
         all_diameters,
         SAMPLES
     )
 
-    plot_histogram_comparison(
+    plot_histogram_comparison_scale_100um(
         all_diameters,
         SAMPLES
+    )
+
+    plot_individual_histograms_scale_30um(
+        all_diameters,
+        SAMPLES_ZOOM
     )
 
     # ---------------------------------
@@ -223,14 +255,28 @@ def main():
 
             elif choice == "2":
 
-                plot_individual_histograms(
-                    all_diameters,
-                    SAMPLES
-                )
+                scale_choice = get_histogram_scale()
+
+                if scale_choice == "0":
+                    continue
+
+                if scale_choice == "1":
+
+                    plot_individual_histograms_scale_30um(
+                        all_diameters,
+                        SAMPLES_ZOOM
+                    )
+
+                elif scale_choice == "2":
+
+                    plot_individual_histograms_scale_100um(
+                        all_diameters,
+                        SAMPLES
+                    )
 
             elif choice == "3":
 
-                plot_histogram_comparison(
+                plot_histogram_comparison_scale_100um(
                     all_diameters,
                     SAMPLES
                 )

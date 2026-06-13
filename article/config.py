@@ -13,6 +13,8 @@ DATA_DIR = Path("data")
 OUTPUT_DIR = Path("output")
 
 HISTOGRAM_DIR = OUTPUT_DIR / "histograms"
+SCALE30_DIR = HISTOGRAM_DIR / "scale_30um"
+SCALE100_DIR = HISTOGRAM_DIR/ "scale_100um"
 BOXPLOT_DIR = OUTPUT_DIR / "boxplots"
 TREND_DIR = OUTPUT_DIR / "trends"
 
@@ -49,6 +51,51 @@ SAMPLES = {
         "Speed": 84
     },
 
+    "D": {
+        "Polymer": "FS",
+        "Speed": 21
+    },
+
+    "E": {
+        "Polymer": "FS",
+        "Speed": 42
+    },
+
+    "F": {
+        "Polymer": "FS",
+        "Speed": 84
+    },
+    "G": {
+        "Polymer": "FDM",
+        "Speed": 21
+    },
+    "H": {
+        "Polymer": "FDM",
+        "Speed": 42
+    },
+    "I": {
+        "Polymer": "FDM",
+        "Speed": 54
+    },
+    "J": {
+        "Polymer": "FDM",
+        "Speed": 84
+    },
+    "K": {
+        "Polymer": "FDM",
+        "Speed": 42
+    },
+    "L": {
+        "Polymer": "FDM",
+        "Speed": 54
+    },
+    "M": {
+        "Polymer": "FDM",
+        "Speed": 84
+    }
+}
+
+SAMPLES_ZOOM = {
     "D": {
         "Polymer": "FS",
         "Speed": 21
