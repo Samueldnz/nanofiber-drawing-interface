@@ -23,8 +23,7 @@ from estatistica.anova import (
 
 from plots.histogram import (
     plot_individual_histograms,
-    plot_histogram_comparison,
-    plot_density_histogram_comparison
+    plot_histogram_comparison
 )
 
 from plots.boxplot import (
@@ -97,13 +96,12 @@ def print_menu():
     print("1 - Descriptive Statistics")
     print("2 - Individual Histograms")
     print("3 - Histogram Comparison (2x3)")
-    print("4 - Density Histogram Comparison")
-    print("5 - Individual Boxplots")
-    print("6 - Boxplot Comparison (2x3)")
-    print("7 - Trend Plot (Mean ± SEM)")
-    print("8 - Two-Way ANOVA + Tukey")
-    print("9 - Run Everything")
-    print("10 - Clear Output Folder")
+    print("4 - Individual Boxplots")
+    print("5 - Boxplot Comparison (2x3)")
+    print("6 - Trend Plot (Mean ± SEM)")
+    print("7 - Two-Way ANOVA + Tukey")
+    print("8 - Run Everything")
+    print("9 - Clear Output Folder")
     print("0 - Exit")
 
     print("=" * 50)
@@ -157,11 +155,6 @@ def run_everything(
     )
 
     plot_histogram_comparison(
-        all_diameters,
-        SAMPLES
-    )
-
-    plot_density_histogram_comparison(
         all_diameters,
         SAMPLES
     )
@@ -242,48 +235,42 @@ def main():
                     SAMPLES
                 )
 
+
             elif choice == "4":
-
-                plot_density_histogram_comparison(
-                    all_diameters,
-                    SAMPLES
-                )
-
-            elif choice == "5":
 
                 plot_individual_boxplots(
                     all_diameters,
                     SAMPLES
                 )
 
-            elif choice == "6":
+            elif choice == "5":
 
                 plot_boxplot_comparison(
                     all_diameters,
                     SAMPLES
                 )
 
-            elif choice == "7":
+            elif choice == "6":
 
                 plot_speed_vs_mean_sem(
                     all_diameters,
                     SAMPLES
                 )
 
-            elif choice == "8":
+            elif choice == "7":
 
                 run_two_way_anova(
                     all_diameters,
                     SAMPLES
                 )
 
-            elif choice == "9":
+            elif choice == "8":
 
                 run_everything(
                     all_diameters
                 )
 
-            elif choice == "10":
+            elif choice == "9":
 
                 clear_output_directory()
 

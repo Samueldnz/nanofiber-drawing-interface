@@ -62,6 +62,34 @@ SAMPLES = {
     "F": {
         "Polymer": "FS",
         "Speed": 84
+    },
+    "G": {
+        "Polymer": "FDM",
+        "Speed": 21
+    },
+    "H": {
+        "Polymer": "FDM",
+        "Speed": 42
+    },
+    "I": {
+        "Polymer": "FDM",
+        "Speed": 54
+    },
+    "J": {
+        "Polymer": "FDM",
+        "Speed": 84
+    },
+    "K": {
+        "Polymer": "FDM",
+        "Speed": 42
+    },
+    "L": {
+        "Polymer": "FDM",
+        "Speed": 54
+    },
+    "M": {
+        "Polymer": "FDM",
+        "Speed": 84
     }
 }
 
